@@ -1,0 +1,205 @@
+#!/bin/bash
+# Test Helper for TDD Workflow Tests
+# Provides common setup, teardown, and utility functions
+
+# Get the project root directory
+export PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export HOOKS_DIR="$PROJECT_ROOT/hooks"
+export CONFIG_DIR="$PROJECT_ROOT/config"
+export FIXTURES_DIR="$PROJECT_ROOT/tests/fixtures"
+export MOCKS_DIR="$FIXTURES_DIR/mocks"
+
+# Setup function - called before each test
+setup_test_environment() {
+    # Create isolated temp directory for this test
+    export TEST_TMP="$BATS_TEST_TMPDIR"
+    export TDD_TMP="$TEST_TMP/claude-tmp"
+    export TDD_LOGS="$TEST_TMP/logs"
+
+    mkdir -p "$TDD_TMP"
+    mkdir -p "$TDD_LOGS/sessions"
+
+    # Override home directory for tests
+    export REAL_HOME="$HOME"
+    export HOME="$TEST_TMP"
+    mkdir -p "$HOME/.claude/tmp"
+    mkdir -p "$HOME/.claude/logs/sessions"
+
+    # Link config to test environment
+    mkdir -p "$HOME/.claude/tdd-workflow"
+    ln -sf "$CONFIG_DIR" "$HOME/.claude/tdd-workflow/config"
+    ln -sf "$HOOKS_DIR" "$HOME/.claude/tdd-workflow/hooks"
+
+    # Set up mock commands path
+    export PATH="$MOCKS_DIR:$PATH"
+
+    # Reset mock state
+    rm -f "$TEST_TMP/mock_compile_exit_code"
+    rm -f "$TEST_TMP/mock_test_exit_code"
+    rm -f "$TEST_TMP/mock_compile_output"
+    rm -f "$TEST_TMP/mock_test_output"
+}
+
+# Teardown function - called after each test
+teardown_test_environment() {
+    # Restore home directory
+    export HOME="$REAL_HOME"
+}
+
+# Create a mock project structure
+# Usage: create_mock_project "kotlin-maven" "/path/to/project"
+create_mock_project() {
+    local profile="$1"
+    local project_dir="$2"
+
+    mkdir -p "$project_dir"
+
+    case "$profile" in
+        "kotlin-maven")
+            touch "$project_dir/pom.xml"
+            mkdir -p "$project_dir/src/main/kotlin"
+            mkdir -p "$project_dir/src/test/kotlin"
+            touch "$project_dir/src/main/kotlin/Main.kt"
+            ;;
+        "typescript-npm")
+            echo '{"name": "test"}' > "$project_dir/package.json"
+            touch "$project_dir/tsconfig.json"
+            mkdir -p "$project_dir/src"
+            touch "$project_dir/src/index.ts"
+            ;;
+        "python-pytest")
+            touch "$project_dir/pyproject.toml"
+            mkdir -p "$project_dir/src"
+            mkdir -p "$project_dir/tests"
+            touch "$project_dir/src/main.py"
+            ;;
+        "go")
+            echo "module test" > "$project_dir/go.mod"
+            touch "$project_dir/main.go"
+            ;;
+        *)
+            echo "Unknown profile: $profile" >&2
+            return 1
+            ;;
+    esac
+}
+
+# Set mock compile result
+# Usage: set_mock_compile_result 0 "Build successful"
+set_mock_compile_result() {
+    local exit_code="$1"
+    local output="${2:-}"
+
+    echo "$exit_code" > "$TEST_TMP/mock_compile_exit_code"
+    echo "$output" > "$TEST_TMP/mock_compile_output"
+}
+
+# Set mock test result
+# Usage: set_mock_test_result 1 "Tests failed: 2 of 10"
+set_mock_test_result() {
+    local exit_code="$1"
+    local output="${2:-}"
+
+    echo "$exit_code" > "$TEST_TMP/mock_test_exit_code"
+    echo "$output" > "$TEST_TMP/mock_test_output"
+}
+
+# Create TDD marker
+# Usage: create_marker "tdd-mode"
+create_marker() {
+    local marker="$1"
+    touch "$HOME/.claude/tmp/$marker"
+}
+
+# Set TDD phase
+# Usage: set_phase 2
+set_phase() {
+    local phase="$1"
+    echo "$phase" > "$HOME/.claude/tmp/tdd-phase"
+}
+
+# Check if marker exists
+# Usage: marker_exists "tdd-requirements-confirmed"
+marker_exists() {
+    local marker="$1"
+    [[ -f "$HOME/.claude/tmp/$marker" ]]
+}
+
+# Get current phase
+get_phase() {
+    cat "$HOME/.claude/tmp/tdd-phase" 2>/dev/null || echo "0"
+}
+
+# Generate hook input JSON
+# Usage: generate_hook_input "Write" "/path/to/file.kt" "/project/dir"
+generate_hook_input() {
+    local tool_name="$1"
+    local file_path="$2"
+    local cwd="${3:-/project}"
+    local session_id="${4:-test-session}"
+
+    cat <<EOF
+{
+    "tool_name": "$tool_name",
+    "tool_input": {
+        "file_path": "$file_path"
+    },
+    "cwd": "$cwd",
+    "session_id": "$session_id",
+    "stop_hook_active": false
+}
+EOF
+}
+
+# Generate stop hook input JSON
+generate_stop_hook_input() {
+    local cwd="${1:-/project}"
+    local session_id="${2:-test-session}"
+
+    cat <<EOF
+{
+    "cwd": "$cwd",
+    "session_id": "$session_id",
+    "stop_hook_active": false
+}
+EOF
+}
+
+# Assert output contains string
+# Usage: assert_output_contains "block"
+assert_output_contains() {
+    local expected="$1"
+    if [[ "$output" != *"$expected"* ]]; then
+        echo "Expected output to contain: $expected"
+        echo "Actual output: $output"
+        return 1
+    fi
+}
+
+# Assert output does not contain string
+assert_output_not_contains() {
+    local unexpected="$1"
+    if [[ "$output" == *"$unexpected"* ]]; then
+        echo "Expected output NOT to contain: $unexpected"
+        echo "Actual output: $output"
+        return 1
+    fi
+}
+
+# Assert JSON decision is block
+assert_decision_block() {
+    assert_output_contains '"decision": "block"' || \
+    assert_output_contains '"decision":"block"'
+}
+
+# Assert JSON decision is approve (or no output = allow)
+assert_decision_allow() {
+    if [[ -n "$output" ]]; then
+        if [[ "$output" == *'"decision"'* ]]; then
+            assert_output_contains '"decision": "approve"' || \
+            assert_output_contains '"decision":"approve"'
+        fi
+    fi
+    # Empty output also means allow
+    return 0
+}
