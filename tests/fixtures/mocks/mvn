@@ -7,10 +7,20 @@ TEST_TMP="${TEST_TMP:-/tmp}"
 # Check what command was requested
 case "$1" in
     "clean")
-        # mvn clean compile or mvn clean test
+        # mvn clean compile, mvn clean test, mvn clean test-compile
         if [[ "$2" == "compile" ]]; then
             exit_code=$(cat "$TEST_TMP/mock_compile_exit_code" 2>/dev/null || echo "0")
             output=$(cat "$TEST_TMP/mock_compile_output" 2>/dev/null || echo "BUILD SUCCESS")
+            echo "$output"
+            exit "$exit_code"
+        elif [[ "$2" == "test-compile" ]]; then
+            exit_code=$(cat "$TEST_TMP/mock_compile_exit_code" 2>/dev/null || echo "0")
+            output=$(cat "$TEST_TMP/mock_compile_output" 2>/dev/null || echo "BUILD SUCCESS")
+            echo "$output"
+            exit "$exit_code"
+        elif [[ "$2" == "test" ]]; then
+            exit_code=$(cat "$TEST_TMP/mock_test_exit_code" 2>/dev/null || echo "0")
+            output=$(cat "$TEST_TMP/mock_test_output" 2>/dev/null || echo "Tests run: 10, Failures: 0")
             echo "$output"
             exit "$exit_code"
         fi

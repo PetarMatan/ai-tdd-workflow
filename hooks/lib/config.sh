@@ -108,12 +108,14 @@ for profile_name, profile in profiles.items():
     for pattern in patterns:
         # Convert glob to simple check
         ext = pattern.split('*')[-1] if '*' in pattern else pattern
+        pattern_matched = False
         for root, dirs, filenames in os.walk(project_dir):
             for filename in filenames:
                 if filename.endswith(ext):
                     score += 1
+                    pattern_matched = True
                     break
-            if score > 0:
+            if pattern_matched:
                 break
 
     if score > 0:

@@ -15,7 +15,7 @@ Each phase transition requires explicit user approval, ensuring human oversight 
 
 ## Features
 
-- **Multi-language Support** - Pre-configured profiles for Kotlin, TypeScript, Python, Go, Rust, and Java
+- **Multi-language Support** - Pre-configured profiles for Kotlin, TypeScript, JavaScript, Python, Go, Rust, and Java (with npm/pnpm variants)
 - **Auto-detection** - Automatically detects project technology stack
 - **Phase Guards** - Prevents editing wrong file types per phase
 - **Auto Compile/Test** - Runs compile and test commands automatically
@@ -100,6 +100,9 @@ Reset and start over:
 | Kotlin/Maven | `pom.xml` + `*.kt` | `mvn clean compile -q` | `mvn test -q` |
 | Kotlin/Gradle | `build.gradle.kts` + `*.kt` | `./gradlew compileKotlin -q` | `./gradlew test -q` |
 | TypeScript/npm | `package.json` + `tsconfig.json` | `npm run build` | `npm test` |
+| TypeScript/pnpm | `package.json` + `tsconfig.json` + `pnpm-lock.yaml` | `pnpm run build` | `pnpm test` |
+| JavaScript/npm | `package.json` + `*.js` | `npm run build` | `npm test` |
+| JavaScript/pnpm | `package.json` + `pnpm-lock.yaml` + `*.js` | `pnpm run build` | `pnpm test` |
 | Python/pytest | `pyproject.toml` + `*.py` | `python -m py_compile` | `python -m pytest -q` |
 | Go | `go.mod` + `*.go` | `go build ./...` | `go test ./...` |
 | Rust | `Cargo.toml` + `*.rs` | `cargo build` | `cargo test` |

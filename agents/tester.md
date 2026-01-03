@@ -124,21 +124,21 @@ test "should mark task as completed" {
 
 **BAD** - Over-commented:
 ```
-// Given - Setup invalid temperature value for testing
-invalidTemp = -10.0
-// When - Call the validator to validate the temperature
-result = validator.validate(invalidTemp)
-// Then - Verify that validation failed
+// Given - Setup an empty string to test validation
+invalidInput = ""
+// When - Call the validator to check if input is valid
+result = validator.validate(invalidInput)
+// Then - Verify that validation failed because input was empty
 assert result.isFailure
 ```
 
 **GOOD** - Minimal comments:
 ```
 // given
-invalidTemp = -10.0
+invalidInput = ""
 
 // when
-result = validator.validate(invalidTemp)
+result = validator.validate(invalidInput)
 
 // then
 assert result.isFailure
@@ -146,7 +146,7 @@ assert result.isFailure
 
 ### Assertion Best Practices
 - Use specific assertions over generic ones
-- Use fluent assertion libraries when available
+- Use assertion libraries that are used in existing similar tests
 - One logical assertion per test (but multiple assertion calls OK)
 
 **BAD** - Generic assertions:

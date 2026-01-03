@@ -17,9 +17,9 @@
       },
       "commands": {
         "compile": "mvn clean compile -q",
-        "testCompile": "mvn test-compile -q",
-        "test": "mvn test -q",
-        "testSingle": "mvn test -Dtest={testClass} -q"
+        "testCompile": "mvn clean test-compile -q",
+        "test": "mvn clean test -q",
+        "testSingle": "mvn clean test -Dtest={testClass} -q"
       },
       "todoPlaceholder": "TODO(\"Implementation pending - tests first\")",
       "testFramework": "junit5"
@@ -62,6 +62,69 @@
         "testCompile": "npx tsc --noEmit",
         "test": "npm test",
         "testSingle": "npm test -- --testNamePattern=\"{testName}\""
+      },
+      "todoPlaceholder": "throw new Error('TODO: Implementation pending - tests first');",
+      "testFramework": "jest"
+    },
+
+    "javascript-npm": {
+      "name": "JavaScript/npm",
+      "detection": {
+        "files": ["package.json"],
+        "patterns": ["**/*.js", "**/*.jsx"]
+      },
+      "sourcePatterns": {
+        "main": ["**/src/**/*.js", "**/src/**/*.jsx"],
+        "test": ["**/*.test.js", "**/*.test.jsx", "**/*.spec.js", "**/*.spec.jsx"],
+        "config": ["**/package.json", "**/*.config.js", "**/babel.config.js", "**/webpack.config.js"]
+      },
+      "commands": {
+        "compile": "npm run build --if-present || echo 'No build script'",
+        "testCompile": "npm run lint --if-present || echo 'No lint script'",
+        "test": "npm test",
+        "testSingle": "npm test -- --testNamePattern=\"{testName}\""
+      },
+      "todoPlaceholder": "throw new Error('TODO: Implementation pending - tests first');",
+      "testFramework": "jest"
+    },
+
+    "typescript-pnpm": {
+      "name": "TypeScript/pnpm",
+      "detection": {
+        "files": ["package.json", "tsconfig.json", "pnpm-lock.yaml"],
+        "patterns": ["**/*.ts", "**/*.tsx"]
+      },
+      "sourcePatterns": {
+        "main": ["**/src/**/*.ts", "**/src/**/*.tsx"],
+        "test": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
+        "config": ["**/package.json", "**/tsconfig.json", "**/*.config.ts", "**/*.config.js", "**/pnpm-lock.yaml"]
+      },
+      "commands": {
+        "compile": "pnpm run build",
+        "testCompile": "pnpm exec tsc --noEmit",
+        "test": "pnpm test",
+        "testSingle": "pnpm test -- --testNamePattern=\"{testName}\""
+      },
+      "todoPlaceholder": "throw new Error('TODO: Implementation pending - tests first');",
+      "testFramework": "jest"
+    },
+
+    "javascript-pnpm": {
+      "name": "JavaScript/pnpm",
+      "detection": {
+        "files": ["package.json", "pnpm-lock.yaml"],
+        "patterns": ["**/*.js", "**/*.jsx"]
+      },
+      "sourcePatterns": {
+        "main": ["**/src/**/*.js", "**/src/**/*.jsx"],
+        "test": ["**/*.test.js", "**/*.test.jsx", "**/*.spec.js", "**/*.spec.jsx"],
+        "config": ["**/package.json", "**/*.config.js", "**/babel.config.js", "**/webpack.config.js", "**/pnpm-lock.yaml"]
+      },
+      "commands": {
+        "compile": "pnpm run build --if-present || echo 'No build script'",
+        "testCompile": "pnpm run lint --if-present || echo 'No lint script'",
+        "test": "pnpm test",
+        "testSingle": "pnpm test -- --testNamePattern=\"{testName}\""
       },
       "todoPlaceholder": "throw new Error('TODO: Implementation pending - tests first');",
       "testFramework": "jest"

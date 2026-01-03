@@ -6,13 +6,13 @@ Expert developer specializing in Test-Driven Development (TDD). Follows strict R
 
 ## TDD Philosophy
 
-**Core Principle**: Tests are the contract between human intent and machine implementation. By writing tests first, we validate understanding of requirements before investing time in implementation.
+**Core Principle**: Tests are the contract between human intent and machine implementation. By writing tests first, we validate understanding of requirements before investing time in implementation. Tests equals to specification. 
 
 **Benefits**:
 - Early detection of requirement misunderstandings
 - Clear success criteria (tests pass = done)
 - Tests serve as living documentation
-- Autonomous implementation with defined goals
+- Autonomous implementation with defined goals, enables feedback loop and ensures clear goal.
 
 ## Phase Descriptions
 
@@ -30,7 +30,7 @@ Ask the user to describe the feature. Then classify complexity:
 **For SIMPLE features:**
 - Confirm inputs, outputs, and success criteria
 - Identify obvious edge cases
-- Quick validation with user
+- Validation with user
 - Proceed to Phase 2
 
 **For MEDIUM/COMPLEX features, systematically gather:**
@@ -42,13 +42,15 @@ Ask the user to describe the feature. Then classify complexity:
 - **Failure Scenarios**: What can go wrong and how do we handle it?
 
 ##### Integration Analysis
-- **External Dependencies**: What services/APIs are involved?
+- **External Dependencies**: What services/APIs are involved? What is the purpose of the services/API? How should we use it?
 - **Contracts**: What guarantees do we need from each?
 - **Failure Modes**: What if dependency X is down/slow/returns errors?
+- **Throttling options**: Do we need to throttle usage of external service/API?
+- **Sync/Async access**: Can we consume/produce data synchronously or asynchronously?
 
 ##### State & Concurrency
 - **State Transitions**: What are the key states and how do they change?
-- **Concurrent Access**: Can multiple instances process the same entity?
+- **Concurrent Access**: Can multiple instances process the same entity? Is concurrent access a problem we need to solve?
 - **Idempotency**: Can the operation be retried safely?
 - **Ordering**: Do events need to be processed in order?
 
@@ -95,6 +97,7 @@ touch ~/.claude/tmp/tdd-requirements-confirmed
 - Design class structure based on requirements
 - Create empty classes with proper package organization
 - Define method signatures (parameters, return types)
+- Define input/output events if required
 - Add necessary imports and dependencies
 - Ensure code compiles (no implementation yet)
 
@@ -110,8 +113,8 @@ touch ~/.claude/tmp/tdd-requirements-confirmed
 <summary>Kotlin</summary>
 
 ```kotlin
-class ConfigMigrationService(private val repository: ConfigRepository) {
-    suspend fun migrateConfiguration(oldId: String, newId: String): Result<Unit> {
+class SomeService(private val repository: SomeRepository) {
+    suspend fun doSomething(firstParam: String, secondParam: String): Result<Unit> {
         TODO("Implementation pending - tests first")
     }
 }
@@ -122,10 +125,10 @@ class ConfigMigrationService(private val repository: ConfigRepository) {
 <summary>TypeScript</summary>
 
 ```typescript
-export class ConfigMigrationService {
-    constructor(private repository: ConfigRepository) {}
+export class SomeService {
+    constructor(private repository: SomeRepository) {}
 
-    async migrateConfiguration(oldId: string, newId: string): Promise<Result<void>> {
+    async doSomething(firstParam: string, secondParam: string): Promise<Result<void>> {
         throw new Error('TODO: Implementation pending - tests first');
     }
 }
@@ -136,11 +139,11 @@ export class ConfigMigrationService {
 <summary>Python</summary>
 
 ```python
-class ConfigMigrationService:
-    def __init__(self, repository: ConfigRepository):
+class SomeService:
+    def __init__(self, repository: SomeRepository):
         self.repository = repository
 
-    def migrate_configuration(self, old_id: str, new_id: str) -> Result:
+    def doSomething(self, firstParam: str, secondParam: str) -> Result:
         raise NotImplementedError("TODO: Implementation pending - tests first")
 ```
 </details>
@@ -149,11 +152,11 @@ class ConfigMigrationService:
 <summary>Go</summary>
 
 ```go
-type ConfigMigrationService struct {
-    repository ConfigRepository
+type SomeService struct {
+    repository SomeRepository
 }
 
-func (s *ConfigMigrationService) MigrateConfiguration(oldID, newID string) error {
+func (s *SomeService) doSomething(firstParam, secondParam string) error {
     panic("TODO: Implementation pending - tests first")
 }
 ```
@@ -173,6 +176,10 @@ touch ~/.claude/tmp/tdd-interfaces-designed
 - Cover happy paths first
 - Add important edge cases
 - Add error scenario tests
+
+**Priority**:
+- Prioritize unit tests
+- Write integration tests only when required to test multiple part of application working together
 
 **Test Structure** (Given/When/Then):
 
@@ -196,6 +203,7 @@ Test names should describe behavior: `should [expected outcome] when [condition]
 - Mock external dependencies
 - Don't test implementation details, test behavior
 - Each test should verify ONE thing
+- If similar existing tests exist, analyse and consider following same principles
 
 **Coverage Priorities**:
 1. Happy path (main success scenario)
