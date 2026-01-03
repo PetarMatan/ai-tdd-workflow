@@ -3,8 +3,17 @@ set -e
 
 # TDD Workflow Installer for Claude Code
 # Version: 1.0.0
+#
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/petarmatan00/tdd-workflow-claude/main/install.sh | bash
+#
+# Or clone and run locally:
+#   git clone https://github.com/petarmatan00/tdd-workflow-claude.git
+#   cd tdd-workflow-claude && ./install.sh
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_URL="https://github.com/petarmatan00/tdd-workflow-claude.git"
+VERSION="main"
+
 INSTALL_DIR="${HOME}/.claude/tdd-workflow"
 COMMANDS_DIR="${HOME}/.claude/commands"
 SETTINGS_FILE="${HOME}/.claude/settings.json"
@@ -18,54 +27,76 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
+if ! command -v git &> /dev/null; then
+    echo "Error: git is required but not installed."
+    exit 1
+fi
+
+# Determine if running from repo or via curl
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+TEMP_DIR=""
+SOURCE_DIR=""
+
+if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/hooks/tdd-orchestrator.sh" ]]; then
+    # Running from cloned repo
+    echo "Installing from local repository..."
+    SOURCE_DIR="$SCRIPT_DIR"
+else
+    # Running via curl - need to download
+    echo "Downloading TDD Workflow..."
+    TEMP_DIR=$(mktemp -d)
+    trap "rm -rf '$TEMP_DIR'" EXIT
+
+    git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$TEMP_DIR/tdd-workflow" 2>/dev/null || {
+        echo "Error: Failed to download repository."
+        exit 1
+    }
+    SOURCE_DIR="$TEMP_DIR/tdd-workflow"
+    echo "Download complete."
+fi
+
+echo ""
+
 # Create directories
 echo "Creating directories..."
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$COMMANDS_DIR"
 mkdir -p "${HOME}/.claude/tmp"
 mkdir -p "${HOME}/.claude/logs/sessions"
+mkdir -p "${HOME}/.claude/agents"
 
 # Copy hook files
 echo "Installing hooks..."
-cp -r "$SCRIPT_DIR/hooks" "$INSTALL_DIR/"
+cp -r "$SOURCE_DIR/hooks" "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/hooks/"*.sh
 chmod +x "$INSTALL_DIR/hooks/lib/"*.sh 2>/dev/null || true
 
 # Copy config
 echo "Installing configuration..."
-cp -r "$SCRIPT_DIR/config" "$INSTALL_DIR/"
+cp -r "$SOURCE_DIR/config" "$INSTALL_DIR/"
 
-# Copy agents (optional - for reference)
-echo "Installing agents..."
-cp -r "$SCRIPT_DIR/agents" "$INSTALL_DIR/"
+# Copy agents (as examples)
+echo "Installing example agents..."
+cp -r "$SOURCE_DIR/agents" "$INSTALL_DIR/"
+
+# Copy uninstall script
+cp "$SOURCE_DIR/uninstall.sh" "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR/uninstall.sh"
 
 # Install skills as commands
 echo "Installing skills..."
-cp "$SCRIPT_DIR/skills/tdd.md" "$COMMANDS_DIR/tdd.md"
-cp "$SCRIPT_DIR/skills/tdd-status.md" "$COMMANDS_DIR/tdd-status.md"
-cp "$SCRIPT_DIR/skills/tdd-reset.md" "$COMMANDS_DIR/tdd-reset.md"
+cp "$SOURCE_DIR/skills/tdd.md" "$COMMANDS_DIR/tdd.md"
+cp "$SOURCE_DIR/skills/tdd-status.md" "$COMMANDS_DIR/tdd-status.md"
+cp "$SOURCE_DIR/skills/tdd-reset.md" "$COMMANDS_DIR/tdd-reset.md"
+cp "$SOURCE_DIR/skills/create-agent.md" "$COMMANDS_DIR/create-agent.md"
 
 # Update settings.json
 echo ""
 echo "=== Settings Configuration ==="
 echo ""
 
-if [[ -f "$SETTINGS_FILE" ]]; then
-    echo "Found existing settings.json"
-    echo ""
-    echo "The installer needs to add TDD hooks to your settings."
-    echo "This will modify: $SETTINGS_FILE"
-    echo ""
-    read -p "Would you like to automatically update settings.json? (y/n): " -n 1 -r
-    echo ""
-
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        # Backup existing settings
-        cp "$SETTINGS_FILE" "${SETTINGS_FILE}.backup.$(date +%Y%m%d%H%M%S)"
-        echo "Backup created."
-
-        # Use Python to merge settings
-        python3 - "$SETTINGS_FILE" "$INSTALL_DIR" <<'PYTHON'
+update_settings() {
+    python3 - "$SETTINGS_FILE" "$INSTALL_DIR" <<'PYTHON'
 import json
 import sys
 
@@ -171,6 +202,30 @@ with open(settings_file, 'w') as f:
 
 print("Settings updated successfully.")
 PYTHON
+}
+
+if [[ -f "$SETTINGS_FILE" ]]; then
+    echo "Found existing settings.json"
+    echo ""
+    echo "The installer needs to add TDD hooks to your settings."
+    echo "This will modify: $SETTINGS_FILE"
+    echo ""
+
+    # Check if running interactively
+    if [[ -t 0 ]]; then
+        read -p "Would you like to automatically update settings.json? (y/n): " -n 1 -r
+        echo ""
+    else
+        # Non-interactive (piped from curl) - default to yes
+        echo "Running non-interactively, automatically updating settings..."
+        REPLY="y"
+    fi
+
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        # Backup existing settings
+        cp "$SETTINGS_FILE" "${SETTINGS_FILE}.backup.$(date +%Y%m%d%H%M%S)"
+        echo "Backup created."
+        update_settings
     else
         echo ""
         echo "Please manually add the hooks from config/settings.example.json"
@@ -178,7 +233,7 @@ PYTHON
     fi
 else
     echo "No settings.json found. Creating new one..."
-    cp "$SCRIPT_DIR/config/settings.example.json" "$SETTINGS_FILE"
+    cp "$SOURCE_DIR/config/settings.example.json" "$SETTINGS_FILE"
     # Update paths in the new settings file
     sed -i.bak "s|~/.claude/tdd-workflow|$INSTALL_DIR|g" "$SETTINGS_FILE" 2>/dev/null || \
     sed -i '' "s|~/.claude/tdd-workflow|$INSTALL_DIR|g" "$SETTINGS_FILE"
@@ -192,8 +247,11 @@ echo ""
 echo "Installed to: $INSTALL_DIR"
 echo ""
 echo "Available commands:"
-echo "  /tdd        - Start TDD mode"
-echo "  /tdd-status - Check current TDD status"
-echo "  /tdd-reset  - Reset TDD state"
+echo "  /tdd           - Start TDD mode"
+echo "  /tdd-status    - Check current TDD status"
+echo "  /tdd-reset     - Reset TDD state"
+echo "  /create-agent  - Create a custom agent"
 echo ""
 echo "Restart Claude Code to apply changes."
+echo ""
+echo "Documentation: https://github.com/petarmatan00/tdd-workflow-claude"

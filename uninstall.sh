@@ -25,6 +25,7 @@ echo "Removing skills..."
 rm -f "$COMMANDS_DIR/tdd.md" 2>/dev/null || true
 rm -f "$COMMANDS_DIR/tdd-status.md" 2>/dev/null || true
 rm -f "$COMMANDS_DIR/tdd-reset.md" 2>/dev/null || true
+rm -f "$COMMANDS_DIR/create-agent.md" 2>/dev/null || true
 
 # Remove installation directory
 if [[ -d "$INSTALL_DIR" ]]; then

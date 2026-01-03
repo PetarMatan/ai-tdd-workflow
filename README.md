@@ -26,13 +26,23 @@ Each phase transition requires explicit user approval, ensuring human oversight 
 
 ### Installation
 
+**Quick install (recommended):**
 ```bash
-# Clone the repository
-git clone https://github.com/petarmatan00/tdd-workflow-claude.git
+curl -fsSL https://raw.githubusercontent.com/petarmatan00/tdd-workflow-claude/main/install.sh | bash
+```
 
-# Run the installer
+**Or clone and install manually:**
+```bash
+git clone https://github.com/petarmatan00/tdd-workflow-claude.git
 cd tdd-workflow-claude
 ./install.sh
+```
+
+**Uninstall:**
+```bash
+~/.claude/tdd-workflow/uninstall.sh
+# Or if you have the repo cloned:
+./uninstall.sh
 ```
 
 ### Usage
