@@ -28,7 +28,7 @@ Each phase transition requires explicit user approval, ensuring human oversight 
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/tdd-workflow-claude.git
+git clone https://github.com/petarmatan00/tdd-workflow-claude.git
 
 # Run the installer
 cd tdd-workflow-claude
@@ -52,6 +52,51 @@ Reset and start over:
 ```
 /tdd-reset
 ```
+
+Create a custom agent:
+```
+/create-agent
+```
+
+## Custom Agents
+
+You can create custom agents that auto-load during specific TDD phases. This is useful for domain-specific guidance (e.g., an API design expert for Phase 2, or a testing specialist for Phase 3).
+
+### Creating an Agent
+
+Use `/create-agent` to interactively create an agent, or manually create a file in `~/.claude/agents/` with YAML frontmatter:
+
+```markdown
+---
+name: API Designer
+phases: [2, 3]
+---
+
+# API Designer Agent
+
+## Role
+Expert in REST API design...
+
+## Core Expertise
+- RESTful principles
+- OpenAPI specification
+...
+```
+
+### Phase Binding
+
+The `phases` field in frontmatter specifies which TDD phases auto-load this agent:
+
+| Phase | Name | Use Case |
+|-------|------|----------|
+| 1 | Requirements | Domain experts, business analysts |
+| 2 | Interfaces | Architects, API designers |
+| 3 | Tests | Testing specialists |
+| 4 | Implementation | Domain developers |
+
+Agents can bind to multiple phases: `phases: [2, 3, 4]`
+
+When a phase starts, all matching agents are automatically loaded into context.
 
 ## TDD Workflow Phases
 
@@ -231,7 +276,8 @@ tdd-workflow-claude/
 │   ├── cleanup-markers.sh     # SessionEnd - cleans up markers
 │   └── lib/
 │       ├── log.sh             # Shared logging library
-│       └── config.sh          # Configuration and profile detection
+│       ├── config.sh          # Configuration and profile detection
+│       └── agents.sh          # Agent discovery and loading
 ├── agents/
 │   ├── tdd-developer.md       # Main TDD workflow agent
 │   ├── tester.md              # Testing agent
@@ -239,7 +285,8 @@ tdd-workflow-claude/
 ├── skills/
 │   ├── tdd.md                 # /tdd skill - start TDD mode
 │   ├── tdd-status.md          # /tdd-status skill - show status
-│   └── tdd-reset.md           # /tdd-reset skill - reset state
+│   ├── tdd-reset.md           # /tdd-reset skill - reset state
+│   └── create-agent.md        # /create-agent skill - generate custom agents
 ├── config/
 │   ├── tdd-config.json        # Technology profiles configuration
 │   └── settings.example.json  # Example Claude Code settings

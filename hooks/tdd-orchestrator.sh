@@ -8,6 +8,46 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/log.sh"
 source "$SCRIPT_DIR/lib/config.sh"
+source "$SCRIPT_DIR/lib/agents.sh"
+
+# Load agents configured for a specific phase and return their content
+# Usage: load_phase_agents <phase_number> <session_id>
+# Returns: Combined agent content for injection into context
+load_phase_agents() {
+    local phase="$1"
+    local session_id="$2"
+    local agent_content=""
+
+    local agents
+    agents=$(get_agents_for_phase "$phase")
+
+    if [[ -z "$agents" ]]; then
+        return 0
+    fi
+
+    while IFS= read -r agent_file; do
+        if [[ -n "$agent_file" ]]; then
+            local agent_name
+            agent_name=$(get_agent_name "$agent_file")
+            log_tdd "Loading agent '$agent_name' for phase $phase" "$session_id"
+            echo ">>> TDD: Loaded agent: $agent_name" >&2
+
+            local content
+            content=$(load_agent_content "$agent_file")
+            if [[ -n "$content" ]]; then
+                agent_content="${agent_content}
+
+---
+
+## Agent: ${agent_name}
+
+${content}"
+            fi
+        fi
+    done <<< "$agents"
+
+    echo "$agent_content"
+}
 
 # Read hook input
 input=$(cat)
@@ -57,8 +97,15 @@ if [[ "$current_phase" == "1" ]]; then
         echo ">>> TDD: Phase 1 complete, advancing to Phase 2 (Interfaces)" >&2
     else
         log_tdd "Phase 1: Blocked - requirements not confirmed" "$session_id"
-        python3 <<'PYTHON'
+
+        # Load agents configured for phase 1
+        phase1_agents=$(load_phase_agents "1" "$session_id")
+
+        python3 - "$phase1_agents" <<'PYTHON'
+import sys
 import json
+
+agent_content = sys.argv[1] if len(sys.argv) > 1 else ""
 
 reason = """## TDD Phase 1: Requirements Gathering
 
@@ -83,6 +130,9 @@ You cannot proceed until requirements are fully gathered and confirmed.
 
 **Only after creating the marker can you proceed to Phase 2 (Interface Design).**"""
 
+if agent_content:
+    reason = reason + agent_content
+
 output = {"decision": "block", "reason": reason}
 print(json.dumps(output, indent=2))
 PYTHON
@@ -92,16 +142,20 @@ fi
 
 # Phase 2: Interfaces
 if [[ "$current_phase" == "2" ]]; then
+    # Load agents configured for phase 2
+    phase2_agents=$(load_phase_agents "2" "$session_id")
+
     # Check if interfaces compile
     if ! eval "$compile_cmd" 2>/dev/null; then
         compile_errors=$(eval "$compile_cmd" 2>&1 | head -20)
-        python3 - "$compile_errors" "$profile_name" "$compile_cmd" <<'PYTHON'
+        python3 - "$compile_errors" "$profile_name" "$compile_cmd" "$phase2_agents" <<'PYTHON'
 import sys
 import json
 
 errors = sys.argv[1] if len(sys.argv) > 1 else "Unknown compilation error"
 profile = sys.argv[2] if len(sys.argv) > 2 else "Unknown"
 compile_cmd = sys.argv[3] if len(sys.argv) > 3 else "compile command"
+agent_content = sys.argv[4] if len(sys.argv) > 4 else ""
 
 reason = f"""## TDD Phase 2: Interface Design ({profile})
 
@@ -123,6 +177,9 @@ reason = f"""## TDD Phase 2: Interface Design ({profile})
 
 **After code compiles, present interfaces to user for approval.**"""
 
+if agent_content:
+    reason = reason + agent_content
+
 output = {"decision": "block", "reason": reason}
 print(json.dumps(output, indent=2))
 PYTHON
@@ -137,11 +194,12 @@ PYTHON
         echo ">>> TDD: Phase 2 complete, advancing to Phase 3 (Tests)" >&2
     else
         log_tdd "Phase 2: Blocked - awaiting interface approval" "$session_id"
-        python3 - "$profile_name" <<'PYTHON'
+        python3 - "$profile_name" "$phase2_agents" <<'PYTHON'
 import sys
 import json
 
 profile = sys.argv[1] if len(sys.argv) > 1 else "Unknown"
+agent_content = sys.argv[2] if len(sys.argv) > 2 else ""
 
 reason = f"""## TDD Phase 2: Interface Design ({profile})
 
@@ -161,6 +219,9 @@ reason = f"""## TDD Phase 2: Interface Design ({profile})
 
 **Only after creating the marker can you proceed to Phase 3 (Test Writing).**"""
 
+if agent_content:
+    reason = reason + agent_content
+
 output = {"decision": "block", "reason": reason}
 print(json.dumps(output, indent=2))
 PYTHON
@@ -170,16 +231,20 @@ fi
 
 # Phase 3: Tests
 if [[ "$current_phase" == "3" ]]; then
+    # Load agents configured for phase 3
+    phase3_agents=$(load_phase_agents "3" "$session_id")
+
     # Check if tests compile (new gate!)
     if ! eval "$test_compile_cmd" 2>/dev/null; then
         compile_errors=$(eval "$test_compile_cmd" 2>&1 | head -20)
-        python3 - "$compile_errors" "$profile_name" "$test_compile_cmd" <<'PYTHON'
+        python3 - "$compile_errors" "$profile_name" "$test_compile_cmd" "$phase3_agents" <<'PYTHON'
 import sys
 import json
 
 errors = sys.argv[1] if len(sys.argv) > 1 else "Unknown compilation error"
 profile = sys.argv[2] if len(sys.argv) > 2 else "Unknown"
 test_compile_cmd = sys.argv[3] if len(sys.argv) > 3 else "test compile command"
+agent_content = sys.argv[4] if len(sys.argv) > 4 else ""
 
 reason = f"""## TDD Phase 3: Test Writing ({profile})
 
@@ -198,6 +263,9 @@ reason = f"""## TDD Phase 3: Test Writing ({profile})
 
 **After tests compile, present them to user for approval.**"""
 
+if agent_content:
+    reason = reason + agent_content
+
 output = {"decision": "block", "reason": reason}
 print(json.dumps(output, indent=2))
 PYTHON
@@ -212,21 +280,14 @@ PYTHON
     else
         log_tdd "Phase 3: Blocked - awaiting test approval" "$session_id"
 
-        # Load tester agent content if available
-        TESTER_AGENT="${HOME}/.claude/agents/tester-v2.md"
-        TESTER_CONTENT=""
-        if [[ -f "$TESTER_AGENT" ]]; then
-            TESTER_CONTENT=$(cat "$TESTER_AGENT")
-        fi
-
-        python3 - "$TESTER_CONTENT" "$profile_name" <<'PYTHON'
+        python3 - "$profile_name" "$phase3_agents" <<'PYTHON'
 import sys
 import json
 
-tester_content = sys.argv[1] if len(sys.argv) > 1 else ""
-profile = sys.argv[2] if len(sys.argv) > 2 else "Unknown"
+profile = sys.argv[1] if len(sys.argv) > 1 else "Unknown"
+agent_content = sys.argv[2] if len(sys.argv) > 2 else ""
 
-base_context = f"""## TDD Phase 3: Test Writing ({profile})
+reason = f"""## TDD Phase 3: Test Writing ({profile})
 
 **Tests compile successfully** - now get user approval.
 
@@ -251,12 +312,10 @@ base_context = f"""## TDD Phase 3: Test Writing ({profile})
 
 **Only after creating the marker can you proceed to Phase 4 (Implementation).**"""
 
-if tester_content:
-    full_context = base_context + "\n\n---\n\n## Testing Guidelines\n\n" + tester_content
-else:
-    full_context = base_context
+if agent_content:
+    reason = reason + agent_content
 
-output = {"decision": "block", "reason": full_context}
+output = {"decision": "block", "reason": reason}
 print(json.dumps(output, indent=2))
 PYTHON
         exit 0
@@ -265,15 +324,19 @@ fi
 
 # Phase 4: Implementation
 if [[ "$current_phase" == "4" ]]; then
+    # Load agents configured for phase 4
+    phase4_agents=$(load_phase_agents "4" "$session_id")
+
     # Check if compile passes
     if ! eval "$compile_cmd" 2>/dev/null; then
         compile_errors=$(eval "$compile_cmd" 2>&1 | head -20)
-        python3 - "$compile_errors" "$profile_name" <<'PYTHON'
+        python3 - "$compile_errors" "$profile_name" "$phase4_agents" <<'PYTHON'
 import sys
 import json
 
 errors = sys.argv[1] if len(sys.argv) > 1 else "Unknown compilation error"
 profile = sys.argv[2] if len(sys.argv) > 2 else "Unknown"
+agent_content = sys.argv[3] if len(sys.argv) > 3 else ""
 
 reason = f"""## TDD Phase 4: Implementation Loop ({profile})
 
@@ -288,6 +351,9 @@ reason = f"""## TDD Phase 4: Implementation Loop ({profile})
 
 Fix the compilation errors, then try again."""
 
+if agent_content:
+    reason = reason + agent_content
+
 output = {"decision": "block", "reason": reason}
 print(json.dumps(output, indent=2))
 PYTHON
@@ -297,12 +363,13 @@ PYTHON
     # Compile passes, check if tests pass
     if ! eval "$test_cmd" 2>/dev/null; then
         test_output=$(eval "$test_cmd" 2>&1 | tail -30)
-        python3 - "$test_output" "$profile_name" <<'PYTHON'
+        python3 - "$test_output" "$profile_name" "$phase4_agents" <<'PYTHON'
 import sys
 import json
 
 test_output = sys.argv[1] if len(sys.argv) > 1 else ""
 profile = sys.argv[2] if len(sys.argv) > 2 else "Unknown"
+agent_content = sys.argv[3] if len(sys.argv) > 3 else ""
 
 reason = f"""## TDD Phase 4: Implementation Loop ({profile})
 
@@ -316,6 +383,9 @@ reason = f"""## TDD Phase 4: Implementation Loop ({profile})
 **Continue the loop:** Implement -> Compile -> Test -> Fix -> Repeat
 
 Review the failing tests, implement the missing logic, and try again."""
+
+if agent_content:
+    reason = reason + agent_content
 
 output = {"decision": "block", "reason": reason}
 print(json.dumps(output, indent=2))

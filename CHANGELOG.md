@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2025-01-02
+## [1.0.0] - Unreleased
 
 ### Added
 
@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Kotlin/Maven
   - Kotlin/Gradle
   - TypeScript/npm
+  - TypeScript/pnpm
+  - JavaScript/npm
+  - JavaScript/pnpm
   - Python/pytest
   - Go
   - Rust
@@ -33,12 +36,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `/tdd` - Activate TDD mode
   - `/tdd-status` - Show current workflow status
   - `/tdd-reset` - Reset TDD state
+  - `/create-agent` - Interactive custom agent generation
 - Agent definitions:
   - `tdd-developer.md` - Main TDD workflow guidance
   - `tester.md` - Test writing expertise
   - `uncle-bob.md` - Clean code principles
+- Custom agent system:
+  - Phase-bound agents via YAML frontmatter (`phases: [2, 3]`)
+  - Auto-loading of agents when configured phases start
+  - `agents.sh` library for agent discovery and loading
 - Configuration system:
   - `tdd-config.json` - Technology profiles configuration
+  - `schema.json` - JSON Schema for config validation
   - Override support via `~/.claude/tdd-override.json`
 - Install/uninstall scripts
 - Documentation:

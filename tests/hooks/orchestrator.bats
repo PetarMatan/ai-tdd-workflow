@@ -298,3 +298,216 @@ run_orchestrator() {
 
     [ "$(get_phase)" = "1" ]
 }
+
+# =============================================================================
+# Agent Loading Tests
+# =============================================================================
+
+@test "phase 1 loads agents configured for phase 1" {
+    create_marker "tdd-mode"
+    set_phase 1
+
+    # Create an agent bound to phase 1
+    mkdir -p "$HOME/.claude/agents"
+    cat > "$HOME/.claude/agents/requirements-expert.md" << 'EOF'
+---
+name: Requirements Expert
+phases: [1]
+---
+
+# Requirements Expert
+
+Help gather complete requirements.
+EOF
+
+    local input=$(generate_stop_hook_input "$PROJECT_DIR")
+
+    run run_orchestrator "$input"
+    [ "$status" -eq 0 ]
+    assert_decision_block
+    assert_output_contains "Requirements Expert"
+    assert_output_contains "Help gather complete requirements"
+}
+
+@test "phase 2 loads agents configured for phase 2" {
+    create_marker "tdd-mode"
+    set_phase 2
+
+    set_mock_compile_result 0 "BUILD SUCCESS"
+
+    # Create an agent bound to phase 2
+    mkdir -p "$HOME/.claude/agents"
+    cat > "$HOME/.claude/agents/api-designer.md" << 'EOF'
+---
+name: API Designer
+phases: [2]
+---
+
+# API Designer
+
+Design clean REST APIs.
+EOF
+
+    local input=$(generate_stop_hook_input "$PROJECT_DIR")
+
+    run run_orchestrator "$input"
+    [ "$status" -eq 0 ]
+    assert_decision_block
+    assert_output_contains "API Designer"
+    assert_output_contains "Design clean REST APIs"
+}
+
+@test "phase 3 loads agents configured for phase 3" {
+    create_marker "tdd-mode"
+    set_phase 3
+
+    set_mock_compile_result 0 "BUILD SUCCESS"
+
+    # Create an agent bound to phase 3
+    mkdir -p "$HOME/.claude/agents"
+    cat > "$HOME/.claude/agents/test-expert.md" << 'EOF'
+---
+name: Test Expert
+phases: [3]
+---
+
+# Test Expert
+
+Write comprehensive tests.
+EOF
+
+    local input=$(generate_stop_hook_input "$PROJECT_DIR")
+
+    run run_orchestrator "$input"
+    [ "$status" -eq 0 ]
+    assert_decision_block
+    assert_output_contains "Test Expert"
+    assert_output_contains "Write comprehensive tests"
+}
+
+@test "phase 4 loads agents configured for phase 4" {
+    create_marker "tdd-mode"
+    set_phase 4
+
+    set_mock_compile_result 0 "BUILD SUCCESS"
+    set_mock_test_result 1 "Tests failed"
+
+    # Create an agent bound to phase 4
+    mkdir -p "$HOME/.claude/agents"
+    cat > "$HOME/.claude/agents/implementation-expert.md" << 'EOF'
+---
+name: Implementation Expert
+phases: [4]
+---
+
+# Implementation Expert
+
+Implement clean code.
+EOF
+
+    local input=$(generate_stop_hook_input "$PROJECT_DIR")
+
+    run run_orchestrator "$input"
+    [ "$status" -eq 0 ]
+    assert_decision_block
+    assert_output_contains "Implementation Expert"
+    assert_output_contains "Implement clean code"
+}
+
+@test "loads multiple agents for same phase" {
+    create_marker "tdd-mode"
+    set_phase 2
+
+    set_mock_compile_result 0 "BUILD SUCCESS"
+
+    # Create multiple agents bound to phase 2
+    mkdir -p "$HOME/.claude/agents"
+    cat > "$HOME/.claude/agents/agent-one.md" << 'EOF'
+---
+name: Agent One
+phases: [2]
+---
+First agent content.
+EOF
+
+    cat > "$HOME/.claude/agents/agent-two.md" << 'EOF'
+---
+name: Agent Two
+phases: [2, 3]
+---
+Second agent content.
+EOF
+
+    local input=$(generate_stop_hook_input "$PROJECT_DIR")
+
+    run run_orchestrator "$input"
+    [ "$status" -eq 0 ]
+    assert_decision_block
+    assert_output_contains "Agent One"
+    assert_output_contains "First agent content"
+    assert_output_contains "Agent Two"
+    assert_output_contains "Second agent content"
+}
+
+@test "does not load agents configured for different phase" {
+    create_marker "tdd-mode"
+    set_phase 1
+
+    # Create an agent bound to phase 3 only
+    mkdir -p "$HOME/.claude/agents"
+    cat > "$HOME/.claude/agents/phase3-only.md" << 'EOF'
+---
+name: Phase 3 Only
+phases: [3]
+---
+Should not appear in phase 1.
+EOF
+
+    local input=$(generate_stop_hook_input "$PROJECT_DIR")
+
+    run run_orchestrator "$input"
+    [ "$status" -eq 0 ]
+    assert_output_not_contains "Phase 3 Only"
+    assert_output_not_contains "Should not appear in phase 1"
+}
+
+@test "handles no agents gracefully" {
+    create_marker "tdd-mode"
+    set_phase 1
+
+    # Ensure no agents exist
+    rm -rf "$HOME/.claude/agents"
+
+    local input=$(generate_stop_hook_input "$PROJECT_DIR")
+
+    run run_orchestrator "$input"
+    [ "$status" -eq 0 ]
+    assert_decision_block
+    # Should still show phase 1 guidance
+    assert_output_contains "Phase 1"
+}
+
+@test "agent with multiple phases loads in each phase" {
+    mkdir -p "$HOME/.claude/agents"
+    cat > "$HOME/.claude/agents/multi-phase.md" << 'EOF'
+---
+name: Multi Phase Agent
+phases: [2, 3]
+---
+Available in phases 2 and 3.
+EOF
+
+    # Test in phase 2
+    create_marker "tdd-mode"
+    set_phase 2
+    set_mock_compile_result 0 "BUILD SUCCESS"
+
+    local input=$(generate_stop_hook_input "$PROJECT_DIR")
+    run run_orchestrator "$input"
+    assert_output_contains "Multi Phase Agent"
+
+    # Test in phase 3
+    set_phase 3
+    run run_orchestrator "$input"
+    assert_output_contains "Multi Phase Agent"
+}
