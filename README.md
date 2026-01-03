@@ -28,12 +28,12 @@ Each phase transition requires explicit user approval, ensuring human oversight 
 
 **Quick install (recommended):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/petarmatan00/tdd-workflow-claude/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/PetarMatan/tdd-workflow-claude/main/install.sh | bash
 ```
 
 **Or clone and install manually:**
 ```bash
-git clone https://github.com/petarmatan00/tdd-workflow-claude.git
+git clone https://github.com/PetarMatan/tdd-workflow-claude.git
 cd tdd-workflow-claude
 ./install.sh
 ```
