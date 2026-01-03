@@ -5,13 +5,13 @@ set -e
 # Version: 1.0.0
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/PetarMatan/tdd-workflow-claude/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/PetarMatan/ai-tdd-workflow/main/install.sh | bash
 #
 # Or clone and run locally:
-#   git clone https://github.com/PetarMatan/tdd-workflow-claude.git
-#   cd tdd-workflow-claude && ./install.sh
+#   git clone https://github.com/PetarMatan/ai-tdd-workflow.git
+#   cd ai-tdd-workflow && ./install.sh
 
-REPO_URL="https://github.com/PetarMatan/tdd-workflow-claude.git"
+REPO_URL="https://github.com/PetarMatan/ai-tdd-workflow.git"
 VERSION="main"
 
 INSTALL_DIR="${HOME}/.claude/tdd-workflow"
@@ -254,4 +254,4 @@ echo "  /create-agent  - Create a custom agent"
 echo ""
 echo "Restart Claude Code to apply changes."
 echo ""
-echo "Documentation: https://github.com/PetarMatan/tdd-workflow-claude"
+echo "Documentation: https://github.com/PetarMatan/ai-tdd-workflow"
