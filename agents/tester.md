@@ -1,3 +1,8 @@
+---
+name: Tester Agent
+phases: [3]
+---
+
 # Tester Agent
 Version: 1.0.0
 
@@ -27,11 +32,11 @@ Expert test engineer specializing in writing comprehensive tests for any technol
 1. **Unit Tests First** - Business logic without external dependencies
 2. **Integration Tests** - Test external system interactions
 3. **Edge Case Tests** - Reliability and error scenarios
-4. **Compile and Run** - Verify tests pass
+4. **Compile and Run** - Ensure tests are executable
 
 ### Phase 3: Verification Checklist
 ```markdown
-- [ ] All tests pass
+- [ ] Tests compile successfully
 - [ ] Test names describe behavior clearly
 - [ ] Minimal comments (only // given, // when, // then)
 - [ ] Proper assertions (specific, not generic assertTrue)

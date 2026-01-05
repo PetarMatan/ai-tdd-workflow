@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/log.sh"
 source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/agents.sh"
+source "$SCRIPT_DIR/lib/markers.sh"
 
 # Load agents configured for a specific phase and return their content
 # Usage: load_phase_agents <phase_number> <session_id>
@@ -49,24 +50,20 @@ ${content}"
     echo "$agent_content"
 }
 
-# Read hook input
+# Parse hook input
 input=$(cat)
-stop_hook_active=$(echo "$input" | python3 -c "import sys, json; print(json.load(sys.stdin).get('stop_hook_active', False))")
-project_dir=$(echo "$input" | python3 -c "import sys, json; print(json.load(sys.stdin).get('cwd', ''))")
-session_id=$(echo "$input" | python3 -c "import sys, json; print(json.load(sys.stdin).get('session_id', 'unknown'))")
+eval "$(echo "$input" | python3 "$SCRIPT_DIR/lib/hook_io.py" parse)"
+stop_hook_active="$HOOK_STOP_ACTIVE"
+project_dir="$HOOK_CWD"
+session_id="$HOOK_SESSION_ID"
+
+# Initialize session-scoped markers
+setup_markers "$session_id"
 
 # Prevent infinite loops
 if [[ "$stop_hook_active" == "True" ]]; then
     exit 0
 fi
-
-# Marker file paths
-TDD_MODE_MARKER="${HOME}/.claude/tmp/tdd-mode"
-TDD_PHASE_FILE="${HOME}/.claude/tmp/tdd-phase"
-REQUIREMENTS_MARKER="${HOME}/.claude/tmp/tdd-requirements-confirmed"
-INTERFACES_MARKER="${HOME}/.claude/tmp/tdd-interfaces-designed"
-TESTS_MARKER="${HOME}/.claude/tmp/tdd-tests-approved"
-TESTS_PASSING_MARKER="${HOME}/.claude/tmp/tdd-tests-passing"
 
 # Check if TDD mode is active
 if [[ ! -f "$TDD_MODE_MARKER" ]]; then
@@ -101,13 +98,8 @@ if [[ "$current_phase" == "1" ]]; then
         # Load agents configured for phase 1
         phase1_agents=$(load_phase_agents "1" "$session_id")
 
-        python3 - "$phase1_agents" <<'PYTHON'
-import sys
-import json
-
-agent_content = sys.argv[1] if len(sys.argv) > 1 else ""
-
-reason = """## TDD Phase 1: Requirements Gathering
+        marker_dir="~/.claude/tmp/tdd-$session_id"
+        reason="## TDD Phase 1: Requirements Gathering
 
 You cannot proceed until requirements are fully gathered and confirmed.
 
@@ -120,51 +112,40 @@ You cannot proceed until requirements are fully gathered and confirmed.
    - Error scenarios
    - Expected behavior details
 4. **When requirements are complete**, ask user to confirm:
-   - Use AskUserQuestion: "Are these requirements complete and accurate?"
-   - Options: "Yes, requirements are complete" / "No, I have more details"
+   - Use AskUserQuestion: \"Are these requirements complete and accurate?\"
+   - Options: \"Yes, requirements are complete\" / \"No, I have more details\"
 
 5. **When user confirms**, create the marker:
-   ```bash
-   touch ~/.claude/tmp/tdd-requirements-confirmed
-   ```
+   \`\`\`bash
+   mkdir -p $marker_dir && touch $marker_dir/tdd-requirements-confirmed
+   \`\`\`
 
-**Only after creating the marker can you proceed to Phase 2 (Interface Design).**"""
+**Only after creating the marker can you proceed to Phase 2 (Interface Design).**"
 
-if agent_content:
-    reason = reason + agent_content
-
-output = {"decision": "block", "reason": reason}
-print(json.dumps(output, indent=2))
-PYTHON
+        python3 "$SCRIPT_DIR/lib/hook_io.py" block "$reason" "$phase1_agents"
         exit 0
     fi
 fi
 
 # Phase 2: Interfaces
 if [[ "$current_phase" == "2" ]]; then
-    # Load agents configured for phase 2
-    phase2_agents=$(load_phase_agents "2" "$session_id")
-
-    # Check if interfaces compile
-    if ! eval "$compile_cmd" 2>/dev/null; then
-        compile_errors=$(eval "$compile_cmd" 2>&1 | head -20)
-        python3 - "$compile_errors" "$profile_name" "$compile_cmd" "$phase2_agents" <<'PYTHON'
-import sys
-import json
-
-errors = sys.argv[1] if len(sys.argv) > 1 else "Unknown compilation error"
-profile = sys.argv[2] if len(sys.argv) > 2 else "Unknown"
-compile_cmd = sys.argv[3] if len(sys.argv) > 3 else "compile command"
-agent_content = sys.argv[4] if len(sys.argv) > 4 else ""
-
-reason = f"""## TDD Phase 2: Interface Design ({profile})
+    # Check if interfaces compile (capture output on first run)
+    set +e
+    compile_output=$(eval "$compile_cmd" 2>&1)
+    compile_exit_code=$?
+    set -e
+    if [[ $compile_exit_code -ne 0 ]]; then
+        # Load agents only when blocking
+        phase2_agents=$(load_phase_agents "2" "$session_id")
+        compile_errors=$(echo "$compile_output" | head -20)
+        reason="## TDD Phase 2: Interface Design ($profile_name)
 
 **Compilation FAILED** - fix errors before proceeding.
 
 **Compilation Errors:**
-```
-{errors}
-```
+\`\`\`
+$compile_errors
+\`\`\`
 
 **Required Actions:**
 
@@ -173,16 +154,11 @@ reason = f"""## TDD Phase 2: Interface Design ({profile})
 3. **Define method signatures** (parameters, return types)
 4. **Method bodies should throw** NOT_IMPLEMENTED or TODO
 
-5. **Ensure code compiles**: `{compile_cmd}`
+5. **Ensure code compiles**: \`$compile_cmd\`
 
-**After code compiles, present interfaces to user for approval.**"""
+**After code compiles, present interfaces to user for approval.**"
 
-if agent_content:
-    reason = reason + agent_content
-
-output = {"decision": "block", "reason": reason}
-print(json.dumps(output, indent=2))
-PYTHON
+        python3 "$SCRIPT_DIR/lib/hook_io.py" block "$reason" "$phase2_agents"
         exit 0
     fi
 
@@ -193,82 +169,62 @@ PYTHON
         log_tdd "Phase 2 -> 3: Interfaces approved, advancing to Tests" "$session_id"
         echo ">>> TDD: Phase 2 complete, advancing to Phase 3 (Tests)" >&2
     else
+        # Load agents only when blocking
+        phase2_agents=$(load_phase_agents "2" "$session_id")
         log_tdd "Phase 2: Blocked - awaiting interface approval" "$session_id"
-        python3 - "$profile_name" "$phase2_agents" <<'PYTHON'
-import sys
-import json
-
-profile = sys.argv[1] if len(sys.argv) > 1 else "Unknown"
-agent_content = sys.argv[2] if len(sys.argv) > 2 else ""
-
-reason = f"""## TDD Phase 2: Interface Design ({profile})
+        marker_dir="~/.claude/tmp/tdd-$session_id"
+        reason="## TDD Phase 2: Interface Design ($profile_name)
 
 **Compilation PASSED** - now get user approval for interfaces.
 
 **Required Actions:**
 
 1. **Present interfaces to user for review**:
-   - Use AskUserQuestion: "I've designed the following interfaces. Please review and approve."
+   - Use AskUserQuestion: \"I've designed the following interfaces. Please review and approve.\"
    - List the classes/methods you created
-   - Options: "Interfaces look good, approved" / "Need changes"
+   - Options: \"Interfaces look good, approved\" / \"Need changes\"
 
 2. **When user approves**, create the marker:
-   ```bash
-   touch ~/.claude/tmp/tdd-interfaces-designed
-   ```
+   \`\`\`bash
+   mkdir -p $marker_dir && touch $marker_dir/tdd-interfaces-designed
+   \`\`\`
 
-**Only after creating the marker can you proceed to Phase 3 (Test Writing).**"""
+**Only after creating the marker can you proceed to Phase 3 (Test Writing).**"
 
-if agent_content:
-    reason = reason + agent_content
-
-output = {"decision": "block", "reason": reason}
-print(json.dumps(output, indent=2))
-PYTHON
+        python3 "$SCRIPT_DIR/lib/hook_io.py" block "$reason" "$phase2_agents"
         exit 0
     fi
 fi
 
 # Phase 3: Tests
 if [[ "$current_phase" == "3" ]]; then
-    # Load agents configured for phase 3
-    phase3_agents=$(load_phase_agents "3" "$session_id")
-
-    # Check if tests compile (new gate!)
-    if ! eval "$test_compile_cmd" 2>/dev/null; then
-        compile_errors=$(eval "$test_compile_cmd" 2>&1 | head -20)
-        python3 - "$compile_errors" "$profile_name" "$test_compile_cmd" "$phase3_agents" <<'PYTHON'
-import sys
-import json
-
-errors = sys.argv[1] if len(sys.argv) > 1 else "Unknown compilation error"
-profile = sys.argv[2] if len(sys.argv) > 2 else "Unknown"
-test_compile_cmd = sys.argv[3] if len(sys.argv) > 3 else "test compile command"
-agent_content = sys.argv[4] if len(sys.argv) > 4 else ""
-
-reason = f"""## TDD Phase 3: Test Writing ({profile})
+    # Check if tests compile (capture output on first run)
+    set +e
+    compile_output=$(eval "$test_compile_cmd" 2>&1)
+    compile_exit_code=$?
+    set -e
+    if [[ $compile_exit_code -ne 0 ]]; then
+        # Load agents only when blocking
+        phase3_agents=$(load_phase_agents "3" "$session_id")
+        compile_errors=$(echo "$compile_output" | head -20)
+        reason="## TDD Phase 3: Test Writing ($profile_name)
 
 **Test Compilation FAILED** - fix errors before proceeding.
 
 **Compilation Errors:**
-```
-{errors}
-```
+\`\`\`
+$compile_errors
+\`\`\`
 
 **Required Actions:**
 
 1. **Write tests** that compile correctly
 2. **Tests WILL FAIL** when run - that's expected (Red phase of TDD)
-3. **Ensure tests compile**: `{test_compile_cmd}`
+3. **Ensure tests compile**: \`$test_compile_cmd\`
 
-**After tests compile, present them to user for approval.**"""
+**After tests compile, present them to user for approval.**"
 
-if agent_content:
-    reason = reason + agent_content
-
-output = {"decision": "block", "reason": reason}
-print(json.dumps(output, indent=2))
-PYTHON
+        python3 "$SCRIPT_DIR/lib/hook_io.py" block "$reason" "$phase3_agents"
         exit 0
     fi
 
@@ -278,16 +234,11 @@ PYTHON
         log_tdd "Phase 3 -> 4: Tests approved, advancing to Implementation" "$session_id"
         echo ">>> TDD: Phase 3 complete, advancing to Phase 4 (Implementation)" >&2
     else
+        # Load agents only when blocking
+        phase3_agents=$(load_phase_agents "3" "$session_id")
         log_tdd "Phase 3: Blocked - awaiting test approval" "$session_id"
-
-        python3 - "$profile_name" "$phase3_agents" <<'PYTHON'
-import sys
-import json
-
-profile = sys.argv[1] if len(sys.argv) > 1 else "Unknown"
-agent_content = sys.argv[2] if len(sys.argv) > 2 else ""
-
-reason = f"""## TDD Phase 3: Test Writing ({profile})
+        marker_dir="~/.claude/tmp/tdd-$session_id"
+        reason="## TDD Phase 3: Test Writing ($profile_name)
 
 **Tests compile successfully** - now get user approval.
 
@@ -301,95 +252,73 @@ reason = f"""## TDD Phase 3: Test Writing ({profile})
 2. **Tests WILL FAIL** - that's expected (Red phase of TDD)
 
 3. **Present tests to user for review**:
-   - Use AskUserQuestion: "I've written the following tests. Please review and approve."
+   - Use AskUserQuestion: \"I've written the following tests. Please review and approve.\"
    - List the test cases you've written
-   - Options: "Tests look good, approved" / "Need changes"
+   - Options: \"Tests look good, approved\" / \"Need changes\"
 
 4. **When user approves**, create the marker:
-   ```bash
-   touch ~/.claude/tmp/tdd-tests-approved
-   ```
+   \`\`\`bash
+   mkdir -p $marker_dir && touch $marker_dir/tdd-tests-approved
+   \`\`\`
 
-**Only after creating the marker can you proceed to Phase 4 (Implementation).**"""
+**Only after creating the marker can you proceed to Phase 4 (Implementation).**"
 
-if agent_content:
-    reason = reason + agent_content
-
-output = {"decision": "block", "reason": reason}
-print(json.dumps(output, indent=2))
-PYTHON
+        python3 "$SCRIPT_DIR/lib/hook_io.py" block "$reason" "$phase3_agents"
         exit 0
     fi
 fi
 
 # Phase 4: Implementation
 if [[ "$current_phase" == "4" ]]; then
-    # Load agents configured for phase 4
-    phase4_agents=$(load_phase_agents "4" "$session_id")
-
-    # Check if compile passes
-    if ! eval "$compile_cmd" 2>/dev/null; then
-        compile_errors=$(eval "$compile_cmd" 2>&1 | head -20)
-        python3 - "$compile_errors" "$profile_name" "$phase4_agents" <<'PYTHON'
-import sys
-import json
-
-errors = sys.argv[1] if len(sys.argv) > 1 else "Unknown compilation error"
-profile = sys.argv[2] if len(sys.argv) > 2 else "Unknown"
-agent_content = sys.argv[3] if len(sys.argv) > 3 else ""
-
-reason = f"""## TDD Phase 4: Implementation Loop ({profile})
+    # Check if compile passes (capture output on first run)
+    set +e
+    compile_output=$(eval "$compile_cmd" 2>&1)
+    compile_exit_code=$?
+    set -e
+    if [[ $compile_exit_code -ne 0 ]]; then
+        # Load agents only when blocking
+        phase4_agents=$(load_phase_agents "4" "$session_id")
+        compile_errors=$(echo "$compile_output" | head -20)
+        reason="## TDD Phase 4: Implementation Loop ($profile_name)
 
 **Compilation FAILED** - fix errors and continue.
 
 **Compilation Errors:**
-```
-{errors}
-```
+\`\`\`
+$compile_errors
+\`\`\`
 
 **Continue the loop:** Implement -> Compile -> Test -> Fix -> Repeat
 
-Fix the compilation errors, then try again."""
+Fix the compilation errors, then try again."
 
-if agent_content:
-    reason = reason + agent_content
-
-output = {"decision": "block", "reason": reason}
-print(json.dumps(output, indent=2))
-PYTHON
+        python3 "$SCRIPT_DIR/lib/hook_io.py" block "$reason" "$phase4_agents"
         exit 0
     fi
 
-    # Compile passes, check if tests pass
-    if ! eval "$test_cmd" 2>/dev/null; then
-        test_output=$(eval "$test_cmd" 2>&1 | tail -30)
-        python3 - "$test_output" "$profile_name" "$phase4_agents" <<'PYTHON'
-import sys
-import json
-
-test_output = sys.argv[1] if len(sys.argv) > 1 else ""
-profile = sys.argv[2] if len(sys.argv) > 2 else "Unknown"
-agent_content = sys.argv[3] if len(sys.argv) > 3 else ""
-
-reason = f"""## TDD Phase 4: Implementation Loop ({profile})
+    # Compile passes, check if tests pass (capture output on first run)
+    set +e
+    test_full_output=$(eval "$test_cmd" 2>&1)
+    test_exit_code=$?
+    set -e
+    if [[ $test_exit_code -ne 0 ]]; then
+        # Load agents only when blocking
+        phase4_agents=$(load_phase_agents "4" "$session_id")
+        test_output=$(echo "$test_full_output" | tail -30)
+        reason="## TDD Phase 4: Implementation Loop ($profile_name)
 
 **Compilation PASSED** but **Tests FAILED** - continue implementing.
 
 **Test Results:**
-```
-{test_output}
-```
+\`\`\`
+$test_output
+\`\`\`
 
 **Continue the loop:** Implement -> Compile -> Test -> Fix -> Repeat
 
-Review the failing tests, implement the missing logic, and try again."""
+Review the failing tests, implement the missing logic, and try again."
 
-if agent_content:
-    reason = reason + agent_content
-
-output = {"decision": "block", "reason": reason}
-print(json.dumps(output, indent=2))
-PYTHON
+        python3 "$SCRIPT_DIR/lib/hook_io.py" block "$reason" "$phase4_agents"
         exit 0
     fi
 

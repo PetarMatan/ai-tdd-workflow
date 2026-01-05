@@ -9,13 +9,18 @@ set -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/log.sh"
 source "$SCRIPT_DIR/lib/config.sh"
+source "$SCRIPT_DIR/lib/markers.sh"
 
-# Read hook input
+# Parse hook input
 input=$(cat)
-tool_name=$(echo "$input" | python3 -c "import sys, json; print(json.load(sys.stdin).get('tool_name', ''))")
-file_path=$(echo "$input" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('tool_input', {}).get('file_path', ''))")
-project_dir=$(echo "$input" | python3 -c "import sys, json; print(json.load(sys.stdin).get('cwd', ''))")
-session_id=$(echo "$input" | python3 -c "import sys, json; print(json.load(sys.stdin).get('session_id', 'unknown'))")
+eval "$(echo "$input" | python3 "$SCRIPT_DIR/lib/hook_io.py" parse)"
+tool_name="$HOOK_TOOL_NAME"
+file_path="$HOOK_FILE_PATH"
+project_dir="$HOOK_CWD"
+session_id="$HOOK_SESSION_ID"
+
+# Initialize session-scoped markers
+setup_markers "$session_id"
 
 # Only process Write|Edit operations
 if [[ ! "$tool_name" =~ ^(Write|Edit)$ ]]; then
@@ -36,9 +41,6 @@ if [[ "$is_source" == false ]]; then
 fi
 
 # Skip if TDD Phase 4 is active (tdd-auto-test.sh handles compile+test)
-TDD_MODE_MARKER="${HOME}/.claude/tmp/tdd-mode"
-TDD_PHASE_FILE="${HOME}/.claude/tmp/tdd-phase"
-
 if [[ -f "$TDD_MODE_MARKER" ]]; then
     tdd_phase=$(cat "$TDD_PHASE_FILE" 2>/dev/null || echo "0")
     if [[ "$tdd_phase" == "4" ]]; then
@@ -69,34 +71,23 @@ else
 
     error_summary=$(cat "$compile_output_file" | head -20)
 
-    python3 - "$file_path" "$error_summary" "$profile_name" <<'PYTHON'
-import sys
-import json
+    # Build context message for approve-message
+    context="## COMPILATION FAILED ($profile_name)
 
-file_path = sys.argv[1]
-error_summary = sys.argv[2]
-profile = sys.argv[3]
-
-output = {
-    "decision": "approve",
-    "reason": f"Compilation failed ({profile}). Fix errors immediately.",
-    "hookSpecificOutput": {
-        "hookEventName": "PostToolUse",
-        "additionalContext": f"""## COMPILATION FAILED ({profile})
-
-**File:** {file_path}
+**File:** $file_path
 
 **Errors:**
-```
-{error_summary}
-```
+\`\`\`
+$error_summary
+\`\`\`
 
 **Full output:** /tmp/compile-output.txt
 
-Fix the compilation errors before proceeding."""
-    }
-}
-print(json.dumps(output, indent=2))
-PYTHON
+Fix the compilation errors before proceeding."
+
+    python3 "$SCRIPT_DIR/lib/hook_io.py" approve-message \
+        "Compilation failed ($profile_name). Fix errors immediately." \
+        "PostToolUse" \
+        "$context"
     exit 0
 fi

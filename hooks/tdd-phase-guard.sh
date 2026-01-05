@@ -6,36 +6,28 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/log.sh"
 source "$SCRIPT_DIR/lib/config.sh"
+source "$SCRIPT_DIR/lib/markers.sh"
 
+# Parse hook input
 input=$(cat)
+eval "$(echo "$input" | python3 "$SCRIPT_DIR/lib/hook_io.py" parse)"
+session_id="$HOOK_SESSION_ID"
+tool_name="$HOOK_TOOL_NAME"
+file_path="$HOOK_FILE_PATH"
+project_dir="$HOOK_CWD"
 
-# Marker file paths
-TDD_MODE_MARKER="${HOME}/.claude/tmp/tdd-mode"
-TDD_PHASE_FILE="${HOME}/.claude/tmp/tdd-phase"
+# Initialize markers
+setup_markers "$session_id"
 
 # Check if TDD mode is active
 if [[ ! -f "$TDD_MODE_MARKER" ]]; then
     exit 0
 fi
 
-# Get tool name from input
-tool_name=$(echo "$input" | python3 -c "import sys, json; print(json.load(sys.stdin).get('tool_name', ''))" 2>/dev/null)
-
 # Only guard Write and Edit tools
 if [[ "$tool_name" != "Write" && "$tool_name" != "Edit" ]]; then
     exit 0
 fi
-
-# Extract file path, session ID, and project directory
-file_path=$(echo "$input" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-tool_input = data.get('tool_input', {})
-print(tool_input.get('file_path', ''))
-" 2>/dev/null)
-
-session_id=$(echo "$input" | python3 -c "import sys, json; print(json.load(sys.stdin).get('session_id', 'unknown'))" 2>/dev/null)
-project_dir=$(echo "$input" | python3 -c "import sys, json; print(json.load(sys.stdin).get('cwd', ''))" 2>/dev/null)
 
 # If no file path, allow
 if [[ -z "$file_path" ]]; then

@@ -33,8 +33,8 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 ```bash
 # Clone your fork
-git clone https://github.com/yourusername/tdd-workflow-claude.git
-cd tdd-workflow-claude
+git clone https://github.com/yourusername/ai-tdd-workflow.git
+cd ai-tdd-workflow
 
 # Test hooks locally
 export TDD_INSTALL_DIR="$(pwd)"

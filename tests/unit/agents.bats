@@ -10,7 +10,7 @@ setup() {
     source "$HOOKS_DIR/lib/agents.sh"
 
     # Create agents directory
-    mkdir -p "$HOME/.claude/agents"
+    mkdir -p "$TDD_AGENTS_DIR"
 }
 
 teardown() {
@@ -23,7 +23,7 @@ teardown() {
 
 @test "get_agents_for_phase returns agent with matching phase" {
     # Create agent with phases frontmatter
-    cat > "$HOME/.claude/agents/test-agent.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/test-agent.md" << 'EOF'
 ---
 name: Test Agent
 phases: [2, 3]
@@ -40,7 +40,7 @@ EOF
 }
 
 @test "get_agents_for_phase returns empty for non-matching phase" {
-    cat > "$HOME/.claude/agents/test-agent.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/test-agent.md" << 'EOF'
 ---
 name: Test Agent
 phases: [2, 3]
@@ -55,7 +55,7 @@ EOF
 }
 
 @test "get_agents_for_phase returns multiple matching agents" {
-    cat > "$HOME/.claude/agents/agent1.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/agent1.md" << 'EOF'
 ---
 name: Agent One
 phases: [2]
@@ -63,7 +63,7 @@ phases: [2]
 # Agent One
 EOF
 
-    cat > "$HOME/.claude/agents/agent2.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/agent2.md" << 'EOF'
 ---
 name: Agent Two
 phases: [2, 3]
@@ -71,7 +71,7 @@ phases: [2, 3]
 # Agent Two
 EOF
 
-    cat > "$HOME/.claude/agents/agent3.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/agent3.md" << 'EOF'
 ---
 name: Agent Three
 phases: [4]
@@ -87,7 +87,7 @@ EOF
 }
 
 @test "get_agents_for_phase ignores agents without phases field" {
-    cat > "$HOME/.claude/agents/no-phases.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/no-phases.md" << 'EOF'
 ---
 name: No Phases Agent
 ---
@@ -100,7 +100,7 @@ EOF
 }
 
 @test "get_agents_for_phase ignores agents without frontmatter" {
-    cat > "$HOME/.claude/agents/no-frontmatter.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/no-frontmatter.md" << 'EOF'
 # No Frontmatter Agent
 
 This agent has no YAML frontmatter.
@@ -112,8 +112,8 @@ EOF
 }
 
 @test "get_agents_for_phase handles empty agents directory" {
-    rm -rf "$HOME/.claude/agents"
-    mkdir -p "$HOME/.claude/agents"
+    rm -rf "$TDD_AGENTS_DIR"
+    mkdir -p "$TDD_AGENTS_DIR"
 
     run get_agents_for_phase "1"
     [ "$status" -eq 0 ]
@@ -121,7 +121,7 @@ EOF
 }
 
 @test "get_agents_for_phase handles missing agents directory" {
-    rm -rf "$HOME/.claude/agents"
+    rm -rf "$TDD_AGENTS_DIR"
 
     run get_agents_for_phase "1"
     [ "$status" -eq 0 ]
@@ -129,7 +129,7 @@ EOF
 }
 
 @test "get_agents_for_phase handles phases array with spaces" {
-    cat > "$HOME/.claude/agents/spaced.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/spaced.md" << 'EOF'
 ---
 name: Spaced Agent
 phases: [ 1, 2, 3 ]
@@ -147,7 +147,7 @@ EOF
 # =============================================================================
 
 @test "load_agent_content returns content without frontmatter" {
-    cat > "$HOME/.claude/agents/test-agent.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/test-agent.md" << 'EOF'
 ---
 name: Test Agent
 phases: [2]
@@ -158,7 +158,7 @@ phases: [2]
 This is the content.
 EOF
 
-    run load_agent_content "$HOME/.claude/agents/test-agent.md"
+    run load_agent_content "$TDD_AGENTS_DIR/test-agent.md"
     [ "$status" -eq 0 ]
     [[ "$output" == *"# Test Agent"* ]]
     [[ "$output" == *"This is the content."* ]]
@@ -166,20 +166,20 @@ EOF
 }
 
 @test "load_agent_content returns full content when no frontmatter" {
-    cat > "$HOME/.claude/agents/no-fm.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/no-fm.md" << 'EOF'
 # No Frontmatter Agent
 
 All content here.
 EOF
 
-    run load_agent_content "$HOME/.claude/agents/no-fm.md"
+    run load_agent_content "$TDD_AGENTS_DIR/no-fm.md"
     [ "$status" -eq 0 ]
     [[ "$output" == *"# No Frontmatter Agent"* ]]
     [[ "$output" == *"All content here."* ]]
 }
 
 @test "load_agent_content returns error for missing file" {
-    run load_agent_content "$HOME/.claude/agents/nonexistent.md"
+    run load_agent_content "$TDD_AGENTS_DIR/nonexistent.md"
     [ "$status" -ne 0 ]
 }
 
@@ -188,7 +188,7 @@ EOF
 # =============================================================================
 
 @test "get_agent_name returns name from frontmatter" {
-    cat > "$HOME/.claude/agents/my-agent.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/my-agent.md" << 'EOF'
 ---
 name: My Custom Agent
 phases: [1]
@@ -196,32 +196,32 @@ phases: [1]
 # Agent
 EOF
 
-    run get_agent_name "$HOME/.claude/agents/my-agent.md"
+    run get_agent_name "$TDD_AGENTS_DIR/my-agent.md"
     [ "$status" -eq 0 ]
     [ "$output" = "My Custom Agent" ]
 }
 
 @test "get_agent_name derives name from filename when no frontmatter name" {
-    cat > "$HOME/.claude/agents/api-designer.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/api-designer.md" << 'EOF'
 ---
 phases: [2]
 ---
 # API Designer
 EOF
 
-    run get_agent_name "$HOME/.claude/agents/api-designer.md"
+    run get_agent_name "$TDD_AGENTS_DIR/api-designer.md"
     [ "$status" -eq 0 ]
     [ "$output" = "Api Designer" ]
 }
 
 @test "get_agent_name derives name from filename when no frontmatter" {
-    cat > "$HOME/.claude/agents/test-expert.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/test-expert.md" << 'EOF'
 # Test Expert
 
 No frontmatter here.
 EOF
 
-    run get_agent_name "$HOME/.claude/agents/test-expert.md"
+    run get_agent_name "$TDD_AGENTS_DIR/test-expert.md"
     [ "$status" -eq 0 ]
     [ "$output" = "Test Expert" ]
 }
@@ -231,7 +231,7 @@ EOF
 # =============================================================================
 
 @test "list_phase_bound_agents returns JSON array" {
-    cat > "$HOME/.claude/agents/agent1.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/agent1.md" << 'EOF'
 ---
 name: Agent One
 phases: [1, 2]
@@ -247,8 +247,8 @@ EOF
 }
 
 @test "list_phase_bound_agents returns empty array when no agents" {
-    rm -rf "$HOME/.claude/agents"
-    mkdir -p "$HOME/.claude/agents"
+    rm -rf "$TDD_AGENTS_DIR"
+    mkdir -p "$TDD_AGENTS_DIR"
 
     run list_phase_bound_agents
     [ "$status" -eq 0 ]
@@ -256,7 +256,7 @@ EOF
 }
 
 @test "list_phase_bound_agents excludes agents without phases" {
-    cat > "$HOME/.claude/agents/with-phases.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/with-phases.md" << 'EOF'
 ---
 name: With Phases
 phases: [1]
@@ -264,7 +264,7 @@ phases: [1]
 # With Phases
 EOF
 
-    cat > "$HOME/.claude/agents/without-phases.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/without-phases.md" << 'EOF'
 ---
 name: Without Phases
 ---
@@ -278,7 +278,7 @@ EOF
 }
 
 @test "list_phase_bound_agents includes phases array in output" {
-    cat > "$HOME/.claude/agents/multi-phase.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/multi-phase.md" << 'EOF'
 ---
 name: Multi Phase
 phases: [2, 3, 4]

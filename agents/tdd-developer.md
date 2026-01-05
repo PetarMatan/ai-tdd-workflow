@@ -1,3 +1,8 @@
+---
+name: TDD Developer Agent
+phases: [2, 4]
+---
+
 # TDD Developer Agent
 Version: 1.0.0
 

@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `/tdd` - Activate TDD mode
   - `/tdd-status` - Show current workflow status
   - `/tdd-reset` - Reset TDD state
-  - `/create-agent` - Interactive custom agent generation
+  - `/tdd-create-agent` - Interactive custom agent generation
 - Agent definitions:
   - `tdd-developer.md` - Main TDD workflow guidance
   - `tester.md` - Test writing expertise

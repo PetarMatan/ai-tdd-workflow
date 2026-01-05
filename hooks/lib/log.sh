@@ -35,8 +35,11 @@ log_event() {
     local log_date
     log_date=$(get_log_date)
 
+    # Sanitize message: replace newlines with \n to prevent log injection
+    local safe_message="${message//$'\n'/\\n}"
+
     # Format: [timestamp] [CATEGORY] message
-    local log_line="[$timestamp] [$category] $message"
+    local log_line="[$timestamp] [$category] $safe_message"
 
     # Write to session-specific log
     local session_log="$TDD_SESSION_LOG_DIR/${log_date}-${session_id}.log"

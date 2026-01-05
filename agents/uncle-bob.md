@@ -1,3 +1,8 @@
+---
+name: Uncle Bob - Software Craftsmanship
+phases: [2, 3, 4]
+---
+
 # Uncle Bob - Software Craftsmanship Agent
 Version: 1.0.0
 

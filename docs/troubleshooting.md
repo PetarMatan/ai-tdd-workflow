@@ -106,11 +106,14 @@
    ls -la ~/.claude/tmp/tdd-*
    ```
 
-3. Manually create marker (if appropriate):
+3. Manually create marker (if appropriate) - requires your session ID:
    ```bash
-   touch ~/.claude/tmp/tdd-requirements-confirmed  # Phase 1->2
-   touch ~/.claude/tmp/tdd-interfaces-designed     # Phase 2->3
-   touch ~/.claude/tmp/tdd-tests-approved          # Phase 3->4
+   # Get session ID from /tdd-status or check ~/.claude/tmp/tdd-*/
+   SESSION_ID="your-session-id"
+   mkdir -p ~/.claude/tmp/tdd-$SESSION_ID
+   touch ~/.claude/tmp/tdd-$SESSION_ID/tdd-requirements-confirmed  # Phase 1->2
+   touch ~/.claude/tmp/tdd-$SESSION_ID/tdd-interfaces-designed     # Phase 2->3
+   touch ~/.claude/tmp/tdd-$SESSION_ID/tdd-tests-approved          # Phase 3->4
    ```
 
 4. Reset and start over:
@@ -126,12 +129,7 @@
 
 **Solutions:**
 
-1. Check compile output file:
-   ```bash
-   cat /tmp/compile-output.txt
-   ```
-
-2. Run compile command manually (based on your stack):
+1. Run compile command manually (based on your stack):
    ```bash
    # Maven (Kotlin/Java)
    mvn clean compile
@@ -152,7 +150,7 @@
    cargo build
    ```
 
-3. Check if Python 3 is available:
+2. Check if Python 3 is available:
    ```bash
    python3 --version
    ```
@@ -165,12 +163,7 @@
 
 **Solutions:**
 
-1. Check test output file:
-   ```bash
-   cat /tmp/tdd-test-output.txt
-   ```
-
-2. Run test command manually (based on your stack):
+1. Run test command manually (based on your stack):
    ```bash
    # Maven (Kotlin/Java)
    mvn test
@@ -191,9 +184,10 @@
    cargo test
    ```
 
-3. Verify TDD phase is 4:
+2. Verify TDD phase is 4:
    ```bash
-   cat ~/.claude/tmp/tdd-phase
+   # Check session-scoped phase file
+   cat ~/.claude/tmp/tdd-*/tdd-phase
    ```
 
 ## Log Analysis
@@ -234,15 +228,14 @@ If all else fails, reinstall:
 
 ```bash
 # Uninstall
-cd /path/to/tdd-workflow-claude
-./uninstall.sh
+~/.claude/tdd-workflow/uninstall.sh
 
 # Clean up any remaining files
 rm -rf ~/.claude/tdd-workflow
-rm -f ~/.claude/tmp/tdd-*
+rm -rf ~/.claude/tmp/tdd-*
 
-# Reinstall
-./install.sh
+# Reinstall (using curl)
+curl -fsSL https://raw.githubusercontent.com/PetarMatan/ai-tdd-workflow/main/install.sh | bash
 ```
 
 ## Getting Help

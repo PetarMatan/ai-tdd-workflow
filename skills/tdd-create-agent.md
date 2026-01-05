@@ -39,7 +39,7 @@ If yes, ask: "Which phases?" with multi-select options:
 
 ### Step 3: Generate Agent File
 
-Create the agent file at `~/.claude/agents/{agent-name-slug}.md` with this structure:
+Create the agent file at `~/.claude/tdd-workflow/agents/{agent-name-slug}.md` with this structure:
 
 ```markdown
 ---
@@ -69,11 +69,10 @@ phases: [{selected phases as numbers, e.g., 2, 3}]
 
 Output to user:
 ```
-Created: ~/.claude/agents/{filename}.md
-{If phases selected: "Bound to TDD phases: {phase names}"}
+Created: ~/.claude/tdd-workflow/agents/{filename}.md
+{If phases selected: "Bound to TDD phases: {phase names} - will auto-load during these phases"}
 
 To customize further, edit the file directly.
-To load manually: /load {agent-name}
 ```
 
 ## Notes

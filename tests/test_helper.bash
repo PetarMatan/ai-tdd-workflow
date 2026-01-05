@@ -9,6 +9,9 @@ export CONFIG_DIR="$PROJECT_ROOT/config"
 export FIXTURES_DIR="$PROJECT_ROOT/tests/fixtures"
 export MOCKS_DIR="$FIXTURES_DIR/mocks"
 
+# Default session ID for tests
+TEST_SESSION_ID="test-session"
+
 # Setup function - called before each test
 setup_test_environment() {
     # Create isolated temp directory for this test
@@ -25,10 +28,18 @@ setup_test_environment() {
     mkdir -p "$HOME/.claude/tmp"
     mkdir -p "$HOME/.claude/logs/sessions"
 
+    # Create session-scoped marker directory
+    export TEST_MARKERS_DIR="$HOME/.claude/tmp/tdd-${TEST_SESSION_ID}"
+    mkdir -p "$TEST_MARKERS_DIR"
+
     # Link config to test environment
     mkdir -p "$HOME/.claude/tdd-workflow"
     ln -sf "$CONFIG_DIR" "$HOME/.claude/tdd-workflow/config"
     ln -sf "$HOOKS_DIR" "$HOME/.claude/tdd-workflow/hooks"
+
+    # Set up agents directory for tests
+    export TDD_AGENTS_DIR="$HOME/.claude/agents"
+    mkdir -p "$TDD_AGENTS_DIR"
 
     # Set up mock commands path
     export PATH="$MOCKS_DIR:$PATH"
@@ -104,30 +115,30 @@ set_mock_test_result() {
     echo "$output" > "$TEST_TMP/mock_test_output"
 }
 
-# Create TDD marker
+# Create TDD marker (session-scoped)
 # Usage: create_marker "tdd-mode"
 create_marker() {
     local marker="$1"
-    touch "$HOME/.claude/tmp/$marker"
+    touch "$TEST_MARKERS_DIR/$marker"
 }
 
-# Set TDD phase
+# Set TDD phase (session-scoped)
 # Usage: set_phase 2
 set_phase() {
     local phase="$1"
-    echo "$phase" > "$HOME/.claude/tmp/tdd-phase"
+    echo "$phase" > "$TEST_MARKERS_DIR/tdd-phase"
 }
 
-# Check if marker exists
+# Check if marker exists (session-scoped)
 # Usage: marker_exists "tdd-requirements-confirmed"
 marker_exists() {
     local marker="$1"
-    [[ -f "$HOME/.claude/tmp/$marker" ]]
+    [[ -f "$TEST_MARKERS_DIR/$marker" ]]
 }
 
-# Get current phase
+# Get current phase (session-scoped)
 get_phase() {
-    cat "$HOME/.claude/tmp/tdd-phase" 2>/dev/null || echo "0"
+    cat "$TEST_MARKERS_DIR/tdd-phase" 2>/dev/null || echo "0"
 }
 
 # Generate hook input JSON

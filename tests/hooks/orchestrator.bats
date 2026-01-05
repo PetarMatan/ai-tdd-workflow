@@ -284,13 +284,13 @@ run_orchestrator() {
     run run_orchestrator "$input"
     [ "$status" -eq 0 ]
 
-    # Phase file should be created
-    [ -f "$HOME/.claude/tmp/tdd-phase" ]
+    # Phase file should be created (session-scoped)
+    [ -f "$TEST_MARKERS_DIR/tdd-phase" ]
 }
 
 @test "resets unknown phase to 1" {
     create_marker "tdd-mode"
-    echo "99" > "$HOME/.claude/tmp/tdd-phase"
+    echo "99" > "$TEST_MARKERS_DIR/tdd-phase"
 
     local input=$(generate_stop_hook_input "$PROJECT_DIR")
 
@@ -308,8 +308,8 @@ run_orchestrator() {
     set_phase 1
 
     # Create an agent bound to phase 1
-    mkdir -p "$HOME/.claude/agents"
-    cat > "$HOME/.claude/agents/requirements-expert.md" << 'EOF'
+    mkdir -p "$TDD_AGENTS_DIR"
+    cat > "$TDD_AGENTS_DIR/requirements-expert.md" << 'EOF'
 ---
 name: Requirements Expert
 phases: [1]
@@ -336,8 +336,8 @@ EOF
     set_mock_compile_result 0 "BUILD SUCCESS"
 
     # Create an agent bound to phase 2
-    mkdir -p "$HOME/.claude/agents"
-    cat > "$HOME/.claude/agents/api-designer.md" << 'EOF'
+    mkdir -p "$TDD_AGENTS_DIR"
+    cat > "$TDD_AGENTS_DIR/api-designer.md" << 'EOF'
 ---
 name: API Designer
 phases: [2]
@@ -364,8 +364,8 @@ EOF
     set_mock_compile_result 0 "BUILD SUCCESS"
 
     # Create an agent bound to phase 3
-    mkdir -p "$HOME/.claude/agents"
-    cat > "$HOME/.claude/agents/test-expert.md" << 'EOF'
+    mkdir -p "$TDD_AGENTS_DIR"
+    cat > "$TDD_AGENTS_DIR/test-expert.md" << 'EOF'
 ---
 name: Test Expert
 phases: [3]
@@ -393,8 +393,8 @@ EOF
     set_mock_test_result 1 "Tests failed"
 
     # Create an agent bound to phase 4
-    mkdir -p "$HOME/.claude/agents"
-    cat > "$HOME/.claude/agents/implementation-expert.md" << 'EOF'
+    mkdir -p "$TDD_AGENTS_DIR"
+    cat > "$TDD_AGENTS_DIR/implementation-expert.md" << 'EOF'
 ---
 name: Implementation Expert
 phases: [4]
@@ -421,8 +421,8 @@ EOF
     set_mock_compile_result 0 "BUILD SUCCESS"
 
     # Create multiple agents bound to phase 2
-    mkdir -p "$HOME/.claude/agents"
-    cat > "$HOME/.claude/agents/agent-one.md" << 'EOF'
+    mkdir -p "$TDD_AGENTS_DIR"
+    cat > "$TDD_AGENTS_DIR/agent-one.md" << 'EOF'
 ---
 name: Agent One
 phases: [2]
@@ -430,7 +430,7 @@ phases: [2]
 First agent content.
 EOF
 
-    cat > "$HOME/.claude/agents/agent-two.md" << 'EOF'
+    cat > "$TDD_AGENTS_DIR/agent-two.md" << 'EOF'
 ---
 name: Agent Two
 phases: [2, 3]
@@ -454,8 +454,8 @@ EOF
     set_phase 1
 
     # Create an agent bound to phase 3 only
-    mkdir -p "$HOME/.claude/agents"
-    cat > "$HOME/.claude/agents/phase3-only.md" << 'EOF'
+    mkdir -p "$TDD_AGENTS_DIR"
+    cat > "$TDD_AGENTS_DIR/phase3-only.md" << 'EOF'
 ---
 name: Phase 3 Only
 phases: [3]
@@ -476,7 +476,7 @@ EOF
     set_phase 1
 
     # Ensure no agents exist
-    rm -rf "$HOME/.claude/agents"
+    rm -rf "$TDD_AGENTS_DIR"
 
     local input=$(generate_stop_hook_input "$PROJECT_DIR")
 
@@ -488,8 +488,8 @@ EOF
 }
 
 @test "agent with multiple phases loads in each phase" {
-    mkdir -p "$HOME/.claude/agents"
-    cat > "$HOME/.claude/agents/multi-phase.md" << 'EOF'
+    mkdir -p "$TDD_AGENTS_DIR"
+    cat > "$TDD_AGENTS_DIR/multi-phase.md" << 'EOF'
 ---
 name: Multi Phase Agent
 phases: [2, 3]

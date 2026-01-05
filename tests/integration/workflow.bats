@@ -206,10 +206,10 @@ run_phase_guard() {
     create_marker "tdd-interfaces-designed"
 
     # Simulate reset by removing markers
-    rm -f "$HOME/.claude/tmp/tdd-mode"
-    rm -f "$HOME/.claude/tmp/tdd-phase"
-    rm -f "$HOME/.claude/tmp/tdd-requirements-confirmed"
-    rm -f "$HOME/.claude/tmp/tdd-interfaces-designed"
+    rm -f "$TEST_MARKERS_DIR/tdd-mode"
+    rm -f "$TEST_MARKERS_DIR/tdd-phase"
+    rm -f "$TEST_MARKERS_DIR/tdd-requirements-confirmed"
+    rm -f "$TEST_MARKERS_DIR/tdd-interfaces-designed"
 
     # Orchestrator should do nothing now
     local stop_input=$(generate_stop_hook_input "$PROJECT_DIR")
@@ -232,8 +232,8 @@ run_phase_guard() {
     set_phase 2
     create_marker "tdd-requirements-confirmed"
 
-    # Run session end cleanup
-    local cleanup_input='{"hook_event_name": "SessionEnd", "session_id": "test"}'
+    # Run session end cleanup (use same session_id as TEST_SESSION_ID)
+    local cleanup_input='{"hook_event_name": "SessionEnd", "session_id": "test-session"}'
     echo "$cleanup_input" | bash "$HOOKS_DIR/cleanup-markers.sh"
 
     # All state should be gone
@@ -259,15 +259,15 @@ run_phase_guard() {
     local stop_input=$(generate_stop_hook_input "$PROJECT_DIR")
     run run_orchestrator "$stop_input"
 
-    # Should initialize to phase 1
-    [ -f "$HOME/.claude/tmp/tdd-phase" ]
+    # Should initialize to phase 1 (session-scoped)
+    [ -f "$TEST_MARKERS_DIR/tdd-phase" ]
     assert_decision_block
     assert_output_contains "Phase 1"
 }
 
 @test "handles corrupt phase number" {
     create_marker "tdd-mode"
-    echo "invalid" > "$HOME/.claude/tmp/tdd-phase"
+    echo "invalid" > "$TEST_MARKERS_DIR/tdd-phase"
 
     local stop_input=$(generate_stop_hook_input "$PROJECT_DIR")
     run run_orchestrator "$stop_input"

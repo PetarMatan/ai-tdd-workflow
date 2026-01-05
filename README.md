@@ -24,6 +24,12 @@ Each phase transition requires explicit user approval, ensuring human oversight 
 
 ## Quick Start
 
+### Prerequisites
+
+- **Python 3.6+** - Required for hook scripts
+- **Bash** - Required for hook execution
+- **Claude Code** - The CLI tool this integrates with
+
 ### Installation
 
 **Quick install (recommended):**
@@ -65,7 +71,7 @@ Reset and start over:
 
 Create a custom agent:
 ```
-/create-agent
+/tdd-create-agent
 ```
 
 ## Custom Agents
@@ -74,7 +80,7 @@ You can create custom agents that auto-load during specific TDD phases. This is 
 
 ### Creating an Agent
 
-Use `/create-agent` to interactively create an agent, or manually create a file in `~/.claude/agents/` with YAML frontmatter:
+Use `/tdd-create-agent` to interactively create an agent, or manually create a file in `~/.claude/agents/` with YAML frontmatter:
 
 ```markdown
 ---
@@ -272,7 +278,7 @@ apt install bats          # Debian/Ubuntu
 ## File Structure
 
 ```
-tdd-workflow-claude/
+ai-tdd-workflow/
 ├── README.md
 ├── LICENSE
 ├── CHANGELOG.md
@@ -287,7 +293,12 @@ tdd-workflow-claude/
 │   └── lib/
 │       ├── log.sh             # Shared logging library
 │       ├── config.sh          # Configuration and profile detection
-│       └── agents.sh          # Agent discovery and loading
+│       ├── config_reader.py   # JSON config reading
+│       ├── profile_detector.py # Technology profile detection
+│       ├── agents.sh          # Agent discovery and loading
+│       ├── agent_parser.py    # Agent frontmatter parsing
+│       ├── markers.sh         # Session-scoped marker management
+│       └── pattern_matcher.py # Glob pattern matching
 ├── agents/
 │   ├── tdd-developer.md       # Main TDD workflow agent
 │   ├── tester.md              # Testing agent
@@ -296,7 +307,7 @@ tdd-workflow-claude/
 │   ├── tdd.md                 # /tdd skill - start TDD mode
 │   ├── tdd-status.md          # /tdd-status skill - show status
 │   ├── tdd-reset.md           # /tdd-reset skill - reset state
-│   └── create-agent.md        # /create-agent skill - generate custom agents
+│   └── tdd-create-agent.md    # /tdd-create-agent skill - generate custom agents
 ├── config/
 │   ├── tdd-config.json        # Technology profiles configuration
 │   └── settings.example.json  # Example Claude Code settings
