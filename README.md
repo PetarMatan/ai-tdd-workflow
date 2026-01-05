@@ -13,6 +13,30 @@ This system transforms Claude Code into a TDD-enforcing pair programmer that:
 
 Each phase transition requires explicit user approval, ensuring human oversight throughout the development process.
 
+### Framework Philosophy
+
+**This is a framework, not a complete solution.** The TDD workflow provides structure and enforcement - it ensures Claude follows a disciplined process with clear goals and closed feedback loops. However, the *quality* of the generated code depends largely on the **agents** loaded during each phase.
+
+The workflow itself:
+- Enforces phase progression (no skipping steps)
+- Provides compilation and test feedback loops
+- Blocks incorrect file edits per phase
+- Requires human approval at each gate
+
+The agents determine:
+- Code style and patterns used
+- Architecture decisions
+- Testing strategies and coverage
+- Domain-specific implementation details
+
+**Default agents are generic.** This tool ships with general-purpose developer agents that work across any project. For significantly better results, we recommend creating **custom agents** with:
+
+- **Domain expertise** (e.g., financial systems, healthcare, e-commerce)
+- **Technical specialization** (e.g., API design, database optimization, security)
+- **Team conventions** (e.g., your company's coding standards, preferred patterns)
+
+See [Custom Agents](#custom-agents) for how to create and configure phase-specific agents.
+
 ## Features
 
 - **Multi-language Support** - Pre-configured profiles for Kotlin, TypeScript, JavaScript, Python, Go, Rust, and Java (with npm/pnpm variants)
@@ -50,6 +74,21 @@ cd ai-tdd-workflow
 # Or if you have the repo cloned:
 ./uninstall.sh
 ```
+
+### Backup & Recovery
+
+The installer creates a **full backup** of your `~/.claude` directory before making any changes:
+
+```
+~/.claude-backup-20250105-143022/
+```
+
+If anything goes wrong during or after installation, restore with:
+```bash
+rm -rf ~/.claude && cp -r ~/.claude-backup-TIMESTAMP ~/.claude
+```
+
+The uninstaller also creates a backup of `settings.json` before removing hooks.
 
 ### Usage
 
@@ -179,73 +218,6 @@ Create `~/.claude/tdd-override.json` to override the active profile:
 }
 ```
 
-## Configuration
-
-### Settings Integration
-
-Add to your `~/.claude/settings.json`:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "Bash(mkdir -p ~/.claude/tmp:*)",
-      "Bash(touch ~/.claude/tmp/:*)",
-      "Bash(rm -f ~/.claude/tmp/tdd-*:*)",
-      "Bash(cat ~/.claude/tmp/:*)"
-    ]
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [{
-          "type": "command",
-          "command": "bash ~/.claude/tdd-workflow/hooks/tdd-phase-guard.sh",
-          "timeout": 5000
-        }]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [{
-          "type": "command",
-          "command": "bash ~/.claude/tdd-workflow/hooks/auto-compile.sh",
-          "timeout": 120000
-        }]
-      },
-      {
-        "matcher": "Write|Edit",
-        "hooks": [{
-          "type": "command",
-          "command": "bash ~/.claude/tdd-workflow/hooks/tdd-auto-test.sh",
-          "timeout": 300000
-        }]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [{
-          "type": "command",
-          "command": "bash ~/.claude/tdd-workflow/hooks/tdd-orchestrator.sh",
-          "timeout": 120000
-        }]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [{
-          "type": "command",
-          "command": "bash ~/.claude/tdd-workflow/hooks/cleanup-markers.sh",
-          "timeout": 5000
-        }]
-      }
-    ]
-  }
-}
-```
-
 ## Testing
 
 The project includes a comprehensive test suite using [bats](https://github.com/bats-core/bats-core) (Bash Automated Testing System).
@@ -275,116 +247,9 @@ apt install bats          # Debian/Ubuntu
 - **Hook tests** (`tests/hooks/`) - Test each hook in isolation
 - **Integration tests** (`tests/integration/`) - Test full workflow scenarios
 
-## File Structure
-
-```
-ai-tdd-workflow/
-├── README.md
-├── LICENSE
-├── CHANGELOG.md
-├── install.sh
-├── uninstall.sh
-├── hooks/
-│   ├── tdd-orchestrator.sh    # Stop hook - main phase controller
-│   ├── tdd-phase-guard.sh     # PreToolUse - blocks wrong file types
-│   ├── tdd-auto-test.sh       # PostToolUse - compile+test in Phase 4
-│   ├── auto-compile.sh        # PostToolUse - auto-compile after changes
-│   ├── cleanup-markers.sh     # SessionEnd - cleans up markers
-│   └── lib/
-│       ├── log.sh             # Shared logging library
-│       ├── config.sh          # Configuration and profile detection
-│       ├── config_reader.py   # JSON config reading
-│       ├── profile_detector.py # Technology profile detection
-│       ├── agents.sh          # Agent discovery and loading
-│       ├── agent_parser.py    # Agent frontmatter parsing
-│       ├── markers.sh         # Session-scoped marker management
-│       └── pattern_matcher.py # Glob pattern matching
-├── agents/
-│   ├── tdd-developer.md       # Main TDD workflow agent
-│   ├── tester.md              # Testing agent
-│   └── uncle-bob.md           # Clean code principles agent
-├── skills/
-│   ├── tdd.md                 # /tdd skill - start TDD mode
-│   ├── tdd-status.md          # /tdd-status skill - show status
-│   ├── tdd-reset.md           # /tdd-reset skill - reset state
-│   └── tdd-create-agent.md    # /tdd-create-agent skill - generate custom agents
-├── config/
-│   ├── tdd-config.json        # Technology profiles configuration
-│   └── settings.example.json  # Example Claude Code settings
-├── tests/
-│   ├── run_tests.sh           # Test runner script
-│   ├── test_helper.bash       # Shared test utilities
-│   ├── unit/                  # Unit tests
-│   ├── hooks/                 # Hook tests
-│   ├── integration/           # Integration tests
-│   └── fixtures/              # Test fixtures and mocks
-├── .github/
-│   └── workflows/
-│       └── test.yml           # CI workflow
-└── docs/
-    ├── architecture.md
-    └── troubleshooting.md
-```
-
-## State Machine
-
-The TDD workflow is a state machine controlled by marker files in `~/.claude/tmp/`:
-
-```
-[Start] ─► Phase 1 ─► Phase 2 ─► Phase 3 ─► Phase 4 ─► [Done]
-            │          │          │          │
-            ▼          ▼          ▼          ▼
-    requirements  interfaces   tests     tests
-    -confirmed    -designed   -approved  -passing
-```
-
-| Marker File | Meaning |
-|-------------|---------|
-| `tdd-mode` | TDD mode is active |
-| `tdd-phase` | Current phase number (1-4) |
-| `tdd-requirements-confirmed` | Phase 1 complete |
-| `tdd-interfaces-designed` | Phase 2 complete |
-| `tdd-tests-approved` | Phase 3 complete |
-| `tdd-tests-passing` | Phase 4 complete (triggers cleanup) |
-
 ## Troubleshooting
 
-### TDD mode not activating
-
-Check that markers can be created:
-```bash
-mkdir -p ~/.claude/tmp
-touch ~/.claude/tmp/test-marker
-rm ~/.claude/tmp/test-marker
-```
-
-### Hooks not running
-
-Verify hooks are installed:
-```bash
-ls -la ~/.claude/tdd-workflow/hooks/
-```
-
-Check Claude Code settings:
-```bash
-cat ~/.claude/settings.json | grep tdd
-```
-
-### Profile not detected
-
-Force a specific profile in `~/.claude/tdd-override.json`:
-```json
-{
-  "activeProfile": "kotlin-maven"
-}
-```
-
-### Stuck in a phase
-
-Reset and start over:
-```
-/tdd-reset
-```
+See [docs/troubleshooting.md](docs/troubleshooting.md) for debugging tips, log locations, and common issues.
 
 ## Contributing
 

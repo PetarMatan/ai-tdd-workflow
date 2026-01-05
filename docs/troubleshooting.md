@@ -190,7 +190,28 @@
    cat ~/.claude/tmp/tdd-*/tdd-phase
    ```
 
-## Log Analysis
+## Logging
+
+The TDD workflow logs all activity for debugging and auditing.
+
+### Log Locations
+
+```
+~/.claude/logs/
+├── sessions/
+│   └── <session-id>.log    # Per-session logs
+├── daily/
+│   └── 2025-01-05.log      # Daily aggregated logs
+└── current.log              # Symlink to active session
+```
+
+### Log Categories
+
+- `TDD` - Phase transitions and workflow events
+- `BUILD` - Compilation success/failure
+- `HOOK` - Hook execution events
+- `SESSION` - Session start/end events
+- `ERROR` - Errors and failures
 
 ### View Recent Logs
 
@@ -199,10 +220,13 @@
 cat ~/.claude/logs/current.log
 
 # View today's log
-cat ~/.claude/logs/$(date +%Y-%m-%d).log
+cat ~/.claude/logs/daily/$(date +%Y-%m-%d).log
 
 # Search for TDD events
 grep "\[TDD\]" ~/.claude/logs/current.log
+
+# Search for errors
+grep ERROR ~/.claude/logs/current.log
 ```
 
 ### Common Log Patterns
