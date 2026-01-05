@@ -162,7 +162,6 @@ When a phase starts, all matching agents are automatically loaded into context.
 - Claude gathers requirements from the user
 - Asks clarifying questions about edge cases, error handling, dependencies
 - User confirms requirements are complete
-- **Marker**: `touch ~/.claude/tmp/tdd-requirements-confirmed`
 
 ### Phase 2: Interface Design
 
@@ -172,7 +171,6 @@ When a phase starts, all matching agents are automatically loaded into context.
 - Method bodies contain TODO or throw NotImplementedError
 - Code must compile successfully
 - User approves the interfaces
-- **Marker**: `touch ~/.claude/tmp/tdd-interfaces-designed`
 
 ### Phase 3: Test Writing
 
@@ -182,7 +180,6 @@ When a phase starts, all matching agents are automatically loaded into context.
 - Tests must compile (but will fail when run)
 - Cover happy paths, edge cases, error scenarios
 - User approves the tests
-- **Marker**: `touch ~/.claude/tmp/tdd-tests-approved`
 
 ### Phase 4: Implementation
 
@@ -191,7 +188,6 @@ When a phase starts, all matching agents are automatically loaded into context.
 - Implement business logic method by method
 - Automatic compile-test loop after each change
 - Continue until all tests pass
-- **Auto-cleanup**: Markers removed when tests pass
 
 ## Supported Technologies
 
@@ -208,44 +204,15 @@ When a phase starts, all matching agents are automatically loaded into context.
 | Rust | `Cargo.toml` + `*.rs` | `cargo build` | `cargo test` |
 | Java/Maven | `pom.xml` + `*.java` | `mvn clean compile -q` | `mvn test -q` |
 
-### Custom Configuration
+### Override Auto-Detection (Optional)
 
-Create `~/.claude/tdd-override.json` to override the active profile:
+The workflow automatically detects your project's technology stack. If auto-detection fails or you want to force a specific profile, create `~/.claude/tdd-override.json`:
 
 ```json
 {
   "activeProfile": "typescript-npm"
 }
 ```
-
-## Testing
-
-The project includes a comprehensive test suite using [bats](https://github.com/bats-core/bats-core) (Bash Automated Testing System).
-
-### Running Tests
-
-```bash
-# Install bats (if not installed)
-brew install bats-core    # macOS
-apt install bats          # Debian/Ubuntu
-
-# Run all tests
-./tests/run_tests.sh
-
-# Run specific test categories
-./tests/run_tests.sh --unit         # Unit tests only
-./tests/run_tests.sh --hooks        # Hook tests only
-./tests/run_tests.sh --integration  # Integration tests only
-
-# Verbose output
-./tests/run_tests.sh --verbose
-```
-
-### Test Structure
-
-- **Unit tests** (`tests/unit/`) - Test individual library functions
-- **Hook tests** (`tests/hooks/`) - Test each hook in isolation
-- **Integration tests** (`tests/integration/`) - Test full workflow scenarios
 
 ## Troubleshooting
 
