@@ -111,10 +111,6 @@ cp "$SOURCE_DIR/skills/tdd-reset.md" "$COMMANDS_DIR/tdd-reset.md"
 cp "$SOURCE_DIR/skills/tdd-create-agent.md" "$COMMANDS_DIR/tdd-create-agent.md"
 
 # Update settings.json
-echo ""
-echo "=== Settings Configuration ==="
-echo ""
-
 update_settings() {
     python3 "$INSTALL_DIR/hooks/lib/settings_manager.py" add "$SETTINGS_FILE" "$INSTALL_DIR"
 }
@@ -128,32 +124,11 @@ if [[ -f "$SETTINGS_FILE" ]]; then
         echo "Skipping settings configuration. See manual setup instructions below."
         SKIP_SETTINGS=true
     else
-        echo "Found existing settings.json"
-        echo ""
-        echo "The installer needs to add TDD hooks to your settings."
-        echo "This will modify: $SETTINGS_FILE"
-        echo ""
-
-        # Check if running interactively
-        if [[ -t 0 ]]; then
-            read -p "Would you like to automatically update settings.json? (y/n): " -n 1 -r
-            echo ""
-        else
-            # Non-interactive (piped from curl) - require manual setup for safety
-            echo "Running non-interactively. For safety, skipping automatic settings modification."
-            echo ""
-            REPLY="n"
-        fi
-
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            # Backup existing settings
-            cp "$SETTINGS_FILE" "${SETTINGS_FILE}.backup.$(date +%Y%m%d%H%M%S)"
-            echo "Backup created."
-            update_settings
-        else
-            echo ""
-            SKIP_SETTINGS=true
-        fi
+        echo "Updating settings.json..."
+        # Backup existing settings
+        cp "$SETTINGS_FILE" "${SETTINGS_FILE}.backup.$(date +%Y%m%d%H%M%S)"
+        update_settings
+        echo "Settings updated (backup created)."
     fi
 else
     echo "No settings.json found."
