@@ -112,10 +112,10 @@ if [[ "$RUN_PYTHON" == "true" ]]; then
         cd "$PROJECT_ROOT"
         if python3 -m pytest tests/unit/python/ $PYTEST_OPTS $PYTEST_FILTER; then
             echo ""
-            ((TESTS_PASSED++))
+            TESTS_PASSED=$((TESTS_PASSED + 1))
         else
             echo ""
-            ((TESTS_FAILED++))
+            TESTS_FAILED=$((TESTS_FAILED + 1))
         fi
     fi
 fi
@@ -177,9 +177,9 @@ if [[ "$RUN_BASH" == "true" ]]; then
             fi
 
             if bats $BATS_OPTS "${TEST_FILES[@]}"; then
-                ((TESTS_PASSED++))
+                TESTS_PASSED=$((TESTS_PASSED + 1))
             else
-                ((TESTS_FAILED++))
+                TESTS_FAILED=$((TESTS_FAILED + 1))
             fi
         fi
     fi
