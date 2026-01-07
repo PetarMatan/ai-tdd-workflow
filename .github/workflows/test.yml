@@ -32,30 +32,19 @@ jobs:
           fi
         shell: bash
 
+      - name: Install pytest
+        run: pip install pytest
+
       - name: Make scripts executable
         run: |
-          chmod +x hooks/*.sh 2>/dev/null || true
           chmod +x hooks/*.py
-          chmod +x hooks/lib/*.sh 2>/dev/null || true
           chmod +x install.sh
           chmod +x uninstall.sh
           chmod +x tests/run_tests.sh
           chmod +x tests/fixtures/mocks/*
 
-      - name: Run bats unit tests
-        run: ./tests/run_tests.sh --unit
-
-      - name: Run bats hook tests
-        run: ./tests/run_tests.sh --hooks
-
-      - name: Run bats integration tests
-        run: ./tests/run_tests.sh --integration
-
-      - name: Install pytest
-        run: pip install pytest
-
-      - name: Run Python unit tests
-        run: python3 -m pytest tests/unit/python/ -v
+      - name: Run all tests
+        run: ./tests/run_tests.sh
 
   lint:
     runs-on: ubuntu-latest
@@ -69,10 +58,9 @@ jobs:
 
       - name: Lint shell scripts
         run: |
-          shellcheck hooks/*.sh || true
-          shellcheck hooks/lib/*.sh || true
           shellcheck install.sh || true
           shellcheck uninstall.sh || true
+          shellcheck tests/run_tests.sh || true
 
   validate-json:
     runs-on: ubuntu-latest
