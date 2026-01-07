@@ -38,7 +38,7 @@ cd ai-tdd-workflow
 
 # Test hooks locally
 export TDD_INSTALL_DIR="$(pwd)"
-bash hooks/tdd-orchestrator.sh < test-input.json
+python3 hooks/tdd-orchestrator.py < test-input.json
 ```
 
 ## Code Guidelines

@@ -46,7 +46,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || SCRIPT
 TEMP_DIR=""
 SOURCE_DIR=""
 
-if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/hooks/tdd-orchestrator.sh" ]]; then
+if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/hooks/tdd-orchestrator.py" ]]; then
     # Running from cloned repo
     echo "Installing from local repository..."
     SOURCE_DIR="$SCRIPT_DIR"
@@ -87,7 +87,8 @@ mkdir -p "${HOME}/.claude/agents"
 # Copy hook files
 echo "Installing hooks..."
 cp -r "$SOURCE_DIR/hooks" "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/hooks/"*.sh
+chmod +x "$INSTALL_DIR/hooks/"*.sh 2>/dev/null || true
+chmod +x "$INSTALL_DIR/hooks/"*.py
 chmod +x "$INSTALL_DIR/hooks/lib/"*.sh 2>/dev/null || true
 
 # Copy config

@@ -23,12 +23,12 @@ teardown() {
 # Helper to simulate the full workflow
 run_orchestrator() {
     local input="$1"
-    echo "$input" | bash "$HOOKS_DIR/tdd-orchestrator.sh"
+    echo "$input" | python3 "$HOOKS_DIR/tdd-orchestrator.py"
 }
 
 run_phase_guard() {
     local input="$1"
-    echo "$input" | bash "$HOOKS_DIR/tdd-phase-guard.sh"
+    echo "$input" | python3 "$HOOKS_DIR/tdd-phase-guard.py"
 }
 
 # =============================================================================
@@ -234,7 +234,7 @@ run_phase_guard() {
 
     # Run session end cleanup (use same session_id as TEST_SESSION_ID)
     local cleanup_input='{"hook_event_name": "SessionEnd", "session_id": "test-session"}'
-    echo "$cleanup_input" | bash "$HOOKS_DIR/cleanup-markers.sh"
+    echo "$cleanup_input" | python3 "$HOOKS_DIR/tdd-cleanup-markers.py"
 
     # All state should be gone
     ! marker_exists "tdd-mode"

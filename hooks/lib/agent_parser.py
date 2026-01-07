@@ -11,7 +11,7 @@ Usage:
     python3 agent_parser.py agents-for-phase <agents_dir> <phase>
 
 Examples:
-    python3 agent_parser.py get-phases ~/.claude/agents/tester.md
+    python3 agent_parser.py get-phases ~/.claude/agents/tdd-tester.md
     python3 agent_parser.py list-agents ~/.claude/agents
     python3 agent_parser.py agents-for-phase ~/.claude/agents 3
 """
@@ -74,44 +74,38 @@ def get_content_without_frontmatter(filepath: str) -> str:
         return ""
 
 
-def get_phases(agent_file: str) -> None:
-    """Print phases array as JSON."""
+def get_phases_list(agent_file: str) -> list:
+    """Get phases list. Returns list of phase numbers or empty list."""
     frontmatter = parse_frontmatter(agent_file)
     if frontmatter and 'phases' in frontmatter:
-        print(json.dumps(frontmatter['phases']))
-    else:
-        print("[]")
+        return frontmatter['phases']
+    return []
 
 
-def get_name(agent_file: str) -> None:
-    """Print agent name."""
+def get_agent_name(agent_file: str) -> str:
+    """Get agent name. Returns name from frontmatter or derived from filename."""
     frontmatter = parse_frontmatter(agent_file)
 
     if frontmatter and 'name' in frontmatter:
-        print(frontmatter['name'])
+        return frontmatter['name']
     else:
         # Fallback: derive from filename
         filename = os.path.basename(agent_file)
-        name = filename.replace('.md', '').replace('-', ' ').title()
-        print(name)
+        return filename.replace('.md', '').replace('-', ' ').title()
 
 
-def get_content(agent_file: str) -> None:
-    """Print agent content without frontmatter."""
+def get_agent_content(agent_file: str) -> Optional[str]:
+    """Get agent content without frontmatter. Returns content or None."""
     content = get_content_without_frontmatter(agent_file)
-    if content:
-        print(content)
-    else:
-        sys.exit(1)
+    return content if content else None
 
 
-def list_agents(agents_dir: str) -> None:
-    """List all agents with phase bindings as JSON."""
+def list_agents_data(agents_dir: str) -> list:
+    """Get list of agents with phase bindings. Returns list of dicts."""
     result = []
 
     if not os.path.isdir(agents_dir):
-        print("[]")
-        return
+        return result
 
     for filename in os.listdir(agents_dir):
         if not filename.endswith('.md'):
@@ -130,13 +124,14 @@ def list_agents(agents_dir: str) -> None:
                 'phases': frontmatter['phases']
             })
 
-    print(json.dumps(result))
+    return result
 
 
-def agents_for_phase(agents_dir: str, phase: int) -> None:
-    """Print agent file paths that match the given phase."""
+def get_agents_for_phase(agents_dir: str, phase: int) -> list:
+    """Get agent file paths that match the given phase. Returns list of paths."""
+    result = []
     if not os.path.isdir(agents_dir):
-        return
+        return result
 
     for filename in os.listdir(agents_dir):
         if not filename.endswith('.md'):
@@ -149,7 +144,42 @@ def agents_for_phase(agents_dir: str, phase: int) -> None:
         frontmatter = parse_frontmatter(filepath)
         if frontmatter and 'phases' in frontmatter:
             if phase in frontmatter['phases']:
-                print(filepath)
+                result.append(filepath)
+
+    return result
+
+
+# CLI wrapper functions (for backwards compatibility)
+def get_phases(agent_file: str) -> None:
+    """Print phases array as JSON."""
+    phases = get_phases_list(agent_file)
+    print(json.dumps(phases))
+
+
+def get_name(agent_file: str) -> None:
+    """Print agent name."""
+    print(get_agent_name(agent_file))
+
+
+def get_content(agent_file: str) -> None:
+    """Print agent content without frontmatter."""
+    content = get_agent_content(agent_file)
+    if content:
+        print(content)
+    else:
+        sys.exit(1)
+
+
+def list_agents(agents_dir: str) -> str:
+    """List all agents with phase bindings as JSON string."""
+    result = list_agents_data(agents_dir)
+    return json.dumps(result)
+
+
+def agents_for_phase(agents_dir: str, phase: int) -> None:
+    """Print agent file paths that match the given phase."""
+    for filepath in get_agents_for_phase(agents_dir, phase):
+        print(filepath)
 
 
 def main() -> None:

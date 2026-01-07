@@ -16,9 +16,9 @@ setup() {
     # Create minimal hook files
     echo '#!/bin/bash' > "$SOURCE_DIR/hooks/tdd-orchestrator.sh"
     echo '#!/bin/bash' > "$SOURCE_DIR/hooks/tdd-phase-guard.sh"
-    echo '#!/bin/bash' > "$SOURCE_DIR/hooks/auto-compile.sh"
+    echo '#!/bin/bash' > "$SOURCE_DIR/hooks/tdd-auto-compile.sh"
     echo '#!/bin/bash' > "$SOURCE_DIR/hooks/tdd-auto-test.sh"
-    echo '#!/bin/bash' > "$SOURCE_DIR/hooks/cleanup-markers.sh"
+    echo '#!/bin/bash' > "$SOURCE_DIR/hooks/tdd-cleanup-markers.sh"
     echo '#!/bin/bash' > "$SOURCE_DIR/hooks/lib/log.sh"
     echo '#!/bin/bash' > "$SOURCE_DIR/uninstall.sh"
 
@@ -97,7 +97,7 @@ tdd_hooks = {
             "matcher": "Write|Edit",
             "hooks": [{
                 "type": "command",
-                "command": f"bash {install_dir}/hooks/tdd-phase-guard.sh",
+                "command": f"python3 {install_dir}/hooks/tdd-phase-guard.py",
                 "timeout": 5000
             }]
         }
@@ -107,7 +107,7 @@ tdd_hooks = {
             "matcher": "Write|Edit",
             "hooks": [{
                 "type": "command",
-                "command": f"bash {install_dir}/hooks/auto-compile.sh",
+                "command": f"python3 {install_dir}/hooks/tdd-auto-compile.py",
                 "timeout": 120000
             }]
         },
@@ -115,7 +115,7 @@ tdd_hooks = {
             "matcher": "Write|Edit",
             "hooks": [{
                 "type": "command",
-                "command": f"bash {install_dir}/hooks/tdd-auto-test.sh",
+                "command": f"python3 {install_dir}/hooks/tdd-auto-test.py",
                 "timeout": 300000
             }]
         }
@@ -124,7 +124,7 @@ tdd_hooks = {
         {
             "hooks": [{
                 "type": "command",
-                "command": f"bash {install_dir}/hooks/tdd-orchestrator.sh",
+                "command": f"python3 {install_dir}/hooks/tdd-orchestrator.py",
                 "timeout": 120000
             }]
         }
@@ -133,7 +133,7 @@ tdd_hooks = {
         {
             "hooks": [{
                 "type": "command",
-                "command": f"bash {install_dir}/hooks/cleanup-markers.sh",
+                "command": f"python3 {install_dir}/hooks/tdd-cleanup-markers.py",
                 "timeout": 5000
             }]
         }
@@ -255,7 +255,7 @@ print(existing)
 import json
 s=json.load(open('$SETTINGS_FILE'))
 hooks = s['hooks']['PreToolUse']
-tdd = any('tdd-phase-guard.sh' in str(h) for h in hooks)
+tdd = any('tdd-phase-guard.py' in str(h) for h in hooks)
 print(tdd)
 "
     [ "$output" = "True" ]
@@ -427,7 +427,7 @@ s = json.load(open('$SETTINGS_FILE'))
 hook = s['hooks']['PreToolUse'][0]
 assert hook['matcher'] == 'Write|Edit', f\"matcher: {hook.get('matcher')}\"
 assert hook['hooks'][0]['type'] == 'command', f\"type: {hook['hooks'][0].get('type')}\"
-assert 'tdd-phase-guard.sh' in hook['hooks'][0]['command'], f\"command: {hook['hooks'][0].get('command')}\"
+assert 'tdd-phase-guard.py' in hook['hooks'][0]['command'], f\"command: {hook['hooks'][0].get('command')}\"
 assert hook['hooks'][0]['timeout'] == 5000, f\"timeout: {hook['hooks'][0].get('timeout')}\"
 print('OK')
 "
@@ -440,7 +440,7 @@ s = json.load(open('$SETTINGS_FILE'))
 hook = s['hooks']['PostToolUse'][0]
 assert hook['matcher'] == 'Write|Edit', f\"matcher: {hook.get('matcher')}\"
 assert hook['hooks'][0]['type'] == 'command', f\"type: {hook['hooks'][0].get('type')}\"
-assert 'auto-compile.sh' in hook['hooks'][0]['command'], f\"command: {hook['hooks'][0].get('command')}\"
+assert 'tdd-auto-compile.py' in hook['hooks'][0]['command'], f\"command: {hook['hooks'][0].get('command')}\"
 assert hook['hooks'][0]['timeout'] == 120000, f\"timeout: {hook['hooks'][0].get('timeout')}\"
 print('OK')
 "
@@ -453,7 +453,7 @@ s = json.load(open('$SETTINGS_FILE'))
 hook = s['hooks']['PostToolUse'][1]
 assert hook['matcher'] == 'Write|Edit', f\"matcher: {hook.get('matcher')}\"
 assert hook['hooks'][0]['type'] == 'command', f\"type: {hook['hooks'][0].get('type')}\"
-assert 'tdd-auto-test.sh' in hook['hooks'][0]['command'], f\"command: {hook['hooks'][0].get('command')}\"
+assert 'tdd-auto-test.py' in hook['hooks'][0]['command'], f\"command: {hook['hooks'][0].get('command')}\"
 assert hook['hooks'][0]['timeout'] == 300000, f\"timeout: {hook['hooks'][0].get('timeout')}\"
 print('OK')
 "
@@ -466,7 +466,7 @@ s = json.load(open('$SETTINGS_FILE'))
 hook = s['hooks']['Stop'][0]
 assert 'matcher' not in hook, f\"Stop should not have matcher: {hook.get('matcher')}\"
 assert hook['hooks'][0]['type'] == 'command', f\"type: {hook['hooks'][0].get('type')}\"
-assert 'tdd-orchestrator.sh' in hook['hooks'][0]['command'], f\"command: {hook['hooks'][0].get('command')}\"
+assert 'tdd-orchestrator.py' in hook['hooks'][0]['command'], f\"command: {hook['hooks'][0].get('command')}\"
 assert hook['hooks'][0]['timeout'] == 120000, f\"timeout: {hook['hooks'][0].get('timeout')}\"
 print('OK')
 "
@@ -479,7 +479,7 @@ s = json.load(open('$SETTINGS_FILE'))
 hook = s['hooks']['SessionEnd'][0]
 assert 'matcher' not in hook, f\"SessionEnd should not have matcher: {hook.get('matcher')}\"
 assert hook['hooks'][0]['type'] == 'command', f\"type: {hook['hooks'][0].get('type')}\"
-assert 'cleanup-markers.sh' in hook['hooks'][0]['command'], f\"command: {hook['hooks'][0].get('command')}\"
+assert 'tdd-cleanup-markers.py' in hook['hooks'][0]['command'], f\"command: {hook['hooks'][0].get('command')}\"
 assert hook['hooks'][0]['timeout'] == 5000, f\"timeout: {hook['hooks'][0].get('timeout')}\"
 print('OK')
 "

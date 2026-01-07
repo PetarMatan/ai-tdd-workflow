@@ -39,7 +39,7 @@ def get_tdd_hooks(install_dir: str) -> Dict[str, List[Dict[str, Any]]]:
                 "matcher": "Write|Edit",
                 "hooks": [{
                     "type": "command",
-                    "command": f"bash {install_dir}/hooks/tdd-phase-guard.sh",
+                    "command": f"python3 {install_dir}/hooks/tdd-phase-guard.py",
                     "timeout": 5000
                 }]
             }
@@ -49,7 +49,7 @@ def get_tdd_hooks(install_dir: str) -> Dict[str, List[Dict[str, Any]]]:
                 "matcher": "Write|Edit",
                 "hooks": [{
                     "type": "command",
-                    "command": f"bash {install_dir}/hooks/auto-compile.sh",
+                    "command": f"python3 {install_dir}/hooks/tdd-auto-compile.py",
                     "timeout": 120000
                 }]
             },
@@ -57,7 +57,7 @@ def get_tdd_hooks(install_dir: str) -> Dict[str, List[Dict[str, Any]]]:
                 "matcher": "Write|Edit",
                 "hooks": [{
                     "type": "command",
-                    "command": f"bash {install_dir}/hooks/tdd-auto-test.sh",
+                    "command": f"python3 {install_dir}/hooks/tdd-auto-test.py",
                     "timeout": 300000
                 }]
             }
@@ -66,7 +66,7 @@ def get_tdd_hooks(install_dir: str) -> Dict[str, List[Dict[str, Any]]]:
             {
                 "hooks": [{
                     "type": "command",
-                    "command": f"bash {install_dir}/hooks/tdd-orchestrator.sh",
+                    "command": f"python3 {install_dir}/hooks/tdd-orchestrator.py",
                     "timeout": 120000
                 }]
             }
@@ -75,7 +75,7 @@ def get_tdd_hooks(install_dir: str) -> Dict[str, List[Dict[str, Any]]]:
             {
                 "hooks": [{
                     "type": "command",
-                    "command": f"bash {install_dir}/hooks/cleanup-markers.sh",
+                    "command": f"python3 {install_dir}/hooks/tdd-cleanup-markers.py",
                     "timeout": 5000
                 }]
             }
@@ -171,10 +171,9 @@ def remove_tdd_settings(settings_file: str) -> None:
 
     # Remove TDD-related permissions
     if 'permissions' in settings and 'allow' in settings['permissions']:
-        tdd_patterns = ['tdd-', 'tdd_']
         settings['permissions']['allow'] = [
             p for p in settings['permissions']['allow']
-            if not any(pattern in p for pattern in tdd_patterns)
+            if p not in TDD_PERMISSIONS
         ]
 
     # Remove TDD hooks

@@ -30,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `tdd-orchestrator.sh` - Stop hook for phase control
   - `tdd-phase-guard.sh` - PreToolUse hook for file type enforcement
   - `tdd-auto-test.sh` - PostToolUse hook for compile+test loop
-  - `auto-compile.sh` - PostToolUse hook for automatic compilation
-  - `cleanup-markers.sh` - SessionEnd hook for state cleanup
+  - `tdd-auto-compile.sh` - PostToolUse hook for automatic compilation
+  - `tdd-cleanup-markers.sh` - SessionEnd hook for state cleanup
 - Skill commands:
   - `/tdd` - Activate TDD mode
   - `/tdd-status` - Show current workflow status
@@ -39,8 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `/tdd-create-agent` - Interactive custom agent generation
 - Agent definitions:
   - `tdd-developer.md` - Main TDD workflow guidance
-  - `tester.md` - Test writing expertise
-  - `uncle-bob.md` - Clean code principles
+  - `tdd-tester.md` - Test writing expertise
+  - `tdd-uncle-bob.md` - Clean code principles
 - Custom agent system:
   - Phase-bound agents via YAML frontmatter (`phases: [2, 3]`)
   - Auto-loading of agents when configured phases start

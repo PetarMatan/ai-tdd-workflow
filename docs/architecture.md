@@ -20,7 +20,7 @@ The TDD Workflow system is a hook-based enforcement mechanism for Claude Code th
            │             │            │              │
            ▼             ▼            ▼              ▼
     ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
-    │  Phase   │  │  Auto    │  │Orchestrator│ │ Cleanup  │
+    │  Phase   │  │   Auto   │  │Orchestrator│ │ Cleanup  │
     │  Guard   │  │ Compile  │  │           │  │ Markers  │
     └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘
          │             │            │              │
@@ -63,7 +63,7 @@ Write/Edit Request
  All      Tests     Main      All
 ```
 
-### PostToolUse (auto-compile.sh / tdd-auto-test.sh)
+### PostToolUse (tdd-auto-compile.sh / tdd-auto-test.sh)
 
 ```
 Write/Edit Complete

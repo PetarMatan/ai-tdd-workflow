@@ -3,9 +3,10 @@
 # Usage: ./tests/run_tests.sh [options]
 #
 # Options:
-#   -u, --unit        Run only unit tests
-#   -h, --hooks       Run only hook tests
-#   -i, --integration Run only integration tests
+#   -p, --python      Run only Python tests
+#   -b, --bash        Run only Bash/bats tests
+#   -u, --unit        Run only unit tests (bash)
+#   -i, --integration Run only integration tests (bash)
 #   -v, --verbose     Verbose output
 #   --filter PATTERN  Run tests matching pattern
 
@@ -14,9 +15,10 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Default options
+# Default options - run everything
+RUN_PYTHON=true
+RUN_BASH=true
 RUN_UNIT=true
-RUN_HOOKS=true
 RUN_INTEGRATION=true
 VERBOSE=""
 FILTER=""
@@ -24,26 +26,28 @@ FILTER=""
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -u|--unit)
-            RUN_UNIT=true
-            RUN_HOOKS=false
-            RUN_INTEGRATION=false
+        -p|--python)
+            RUN_PYTHON=true
+            RUN_BASH=false
             shift
             ;;
-        -h|--hooks)
-            RUN_UNIT=false
-            RUN_HOOKS=true
+        -b|--bash)
+            RUN_PYTHON=false
+            RUN_BASH=true
+            shift
+            ;;
+        -u|--unit)
+            RUN_UNIT=true
             RUN_INTEGRATION=false
             shift
             ;;
         -i|--integration)
             RUN_UNIT=false
-            RUN_HOOKS=false
             RUN_INTEGRATION=true
             shift
             ;;
         -v|--verbose)
-            VERBOSE="--verbose-run"
+            VERBOSE="yes"
             shift
             ;;
         --filter)
@@ -54,9 +58,10 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [options]"
             echo ""
             echo "Options:"
-            echo "  -u, --unit        Run only unit tests"
-            echo "  -h, --hooks       Run only hook tests"
-            echo "  -i, --integration Run only integration tests"
+            echo "  -p, --python      Run only Python tests"
+            echo "  -b, --bash        Run only Bash/bats tests"
+            echo "  -u, --unit        Run only unit tests (bash)"
+            echo "  -i, --integration Run only integration tests (bash)"
             echo "  -v, --verbose     Verbose output"
             echo "  --filter PATTERN  Run tests matching pattern"
             exit 0
@@ -68,72 +73,128 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check for bats
-if ! command -v bats &> /dev/null; then
-    echo "Error: bats is not installed."
-    echo ""
-    echo "Install with:"
-    echo "  brew install bats-core    # macOS"
-    echo "  apt install bats          # Debian/Ubuntu"
-    echo "  npm install -g bats       # npm"
-    exit 1
-fi
-
 # Print header
 echo "========================================"
 echo "  TDD Workflow Test Suite"
 echo "========================================"
 echo ""
 
-# Collect test files
-TEST_FILES=()
+TESTS_PASSED=0
+TESTS_FAILED=0
 
-if [[ "$RUN_UNIT" == "true" ]]; then
-    for f in "$SCRIPT_DIR"/unit/*.bats; do
-        [[ -f "$f" ]] && TEST_FILES+=("$f")
-    done
-fi
+# ========================================
+# Python Tests
+# ========================================
+if [[ "$RUN_PYTHON" == "true" ]]; then
+    echo "----------------------------------------"
+    echo "  Python Tests (pytest)"
+    echo "----------------------------------------"
 
-if [[ "$RUN_HOOKS" == "true" ]]; then
-    for f in "$SCRIPT_DIR"/hooks/*.bats; do
-        [[ -f "$f" ]] && TEST_FILES+=("$f")
-    done
-fi
-
-if [[ "$RUN_INTEGRATION" == "true" ]]; then
-    for f in "$SCRIPT_DIR"/integration/*.bats; do
-        [[ -f "$f" ]] && TEST_FILES+=("$f")
-    done
-fi
-
-# Apply filter if specified
-if [[ -n "$FILTER" ]]; then
-    FILTERED=()
-    for f in "${TEST_FILES[@]}"; do
-        if [[ "$f" == *"$FILTER"* ]]; then
-            FILTERED+=("$f")
+    # Check for pytest
+    if ! python3 -m pytest --version &> /dev/null; then
+        echo "Warning: pytest is not installed. Skipping Python tests."
+        echo "Install with: pip install pytest"
+        echo ""
+    else
+        # Default: show test names (like bats does)
+        PYTEST_OPTS="-v --tb=short"
+        if [[ -n "$VERBOSE" ]]; then
+            # Extra verbose: show full tracebacks
+            PYTEST_OPTS="-v --tb=long"
         fi
-    done
-    TEST_FILES=("${FILTERED[@]}")
+
+        # Apply filter if specified
+        PYTEST_FILTER=""
+        if [[ -n "$FILTER" ]]; then
+            PYTEST_FILTER="-k $FILTER"
+        fi
+
+        cd "$PROJECT_ROOT"
+        if python3 -m pytest tests/unit/python/ $PYTEST_OPTS $PYTEST_FILTER; then
+            echo ""
+            ((TESTS_PASSED++))
+        else
+            echo ""
+            ((TESTS_FAILED++))
+        fi
+    fi
 fi
 
-if [[ ${#TEST_FILES[@]} -eq 0 ]]; then
-    echo "No test files found!"
-    exit 1
+# ========================================
+# Bash Tests (bats)
+# ========================================
+if [[ "$RUN_BASH" == "true" ]]; then
+    echo "----------------------------------------"
+    echo "  Bash Tests (bats)"
+    echo "----------------------------------------"
+
+    # Check for bats
+    if ! command -v bats &> /dev/null; then
+        echo "Warning: bats is not installed. Skipping Bash tests."
+        echo "Install with:"
+        echo "  brew install bats-core    # macOS"
+        echo "  apt install bats          # Debian/Ubuntu"
+        echo "  npm install -g bats       # npm"
+        echo ""
+    else
+        # Collect test files
+        TEST_FILES=()
+
+        if [[ "$RUN_UNIT" == "true" ]]; then
+            for f in "$SCRIPT_DIR"/unit/*.bats; do
+                [[ -f "$f" ]] && TEST_FILES+=("$f")
+            done
+        fi
+
+        if [[ "$RUN_INTEGRATION" == "true" ]]; then
+            for f in "$SCRIPT_DIR"/integration/*.bats; do
+                [[ -f "$f" ]] && TEST_FILES+=("$f")
+            done
+        fi
+
+        # Apply filter if specified
+        if [[ -n "$FILTER" ]]; then
+            FILTERED=()
+            for f in "${TEST_FILES[@]}"; do
+                if [[ "$f" == *"$FILTER"* ]]; then
+                    FILTERED+=("$f")
+                fi
+            done
+            TEST_FILES=("${FILTERED[@]}")
+        fi
+
+        if [[ ${#TEST_FILES[@]} -eq 0 ]]; then
+            echo "No bats test files found."
+            echo ""
+        else
+            echo "Running ${#TEST_FILES[@]} bats test file(s)..."
+            echo ""
+
+            # Run tests
+            BATS_OPTS="--timing"
+            if [[ -n "$VERBOSE" ]]; then
+                BATS_OPTS="$BATS_OPTS --verbose-run"
+            fi
+
+            if bats $BATS_OPTS "${TEST_FILES[@]}"; then
+                ((TESTS_PASSED++))
+            else
+                ((TESTS_FAILED++))
+            fi
+        fi
+    fi
 fi
 
-echo "Running ${#TEST_FILES[@]} test file(s)..."
-echo ""
-
-# Run tests
-BATS_OPTS="--timing"
-if [[ -n "$VERBOSE" ]]; then
-    BATS_OPTS="$BATS_OPTS $VERBOSE"
-fi
-
-bats $BATS_OPTS "${TEST_FILES[@]}"
-
+# ========================================
+# Summary
+# ========================================
 echo ""
 echo "========================================"
-echo "  All tests passed!"
+if [[ $TESTS_FAILED -eq 0 ]]; then
+    echo "  All tests passed!"
+else
+    echo "  Some tests failed!"
+fi
 echo "========================================"
+
+exit $TESTS_FAILED

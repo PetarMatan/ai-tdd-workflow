@@ -34,21 +34,28 @@ jobs:
 
       - name: Make scripts executable
         run: |
-          chmod +x hooks/*.sh
-          chmod +x hooks/lib/*.sh
+          chmod +x hooks/*.sh 2>/dev/null || true
+          chmod +x hooks/*.py
+          chmod +x hooks/lib/*.sh 2>/dev/null || true
           chmod +x install.sh
           chmod +x uninstall.sh
           chmod +x tests/run_tests.sh
           chmod +x tests/fixtures/mocks/*
 
-      - name: Run unit tests
+      - name: Run bats unit tests
         run: ./tests/run_tests.sh --unit
 
-      - name: Run hook tests
+      - name: Run bats hook tests
         run: ./tests/run_tests.sh --hooks
 
-      - name: Run integration tests
+      - name: Run bats integration tests
         run: ./tests/run_tests.sh --integration
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run Python unit tests
+        run: python3 -m pytest tests/unit/python/ -v
 
   lint:
     runs-on: ubuntu-latest

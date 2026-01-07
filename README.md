@@ -1,41 +1,31 @@
 # TDD Workflow for Claude Code
 
-A Test-Driven Development (TDD) workflow enforcement system for [Claude Code](https://claude.ai/claude-code) using hooks. This system enforces strict TDD methodology through 4 phases with user approval gates.
+You give an AI a prompt, it starts coding. There's no pause to clarify, no checkpoint to course-correct, no feedback loop to catch mistakes early. By the time you see the result, you might realize the approach was wrong from the start.
 
-## Overview
+## What This Does
 
-This system transforms Claude Code into a TDD-enforcing pair programmer that:
+It's a 4-phase workflow that gives Claude a clear goal and a closed feedback loop. Within each phase, Claude can work autonomously toward that goal:
 
-- **Phase 1: Requirements** - Gathers and clarifies requirements before any code is written
-- **Phase 2: Interfaces** - Designs class/method signatures with compilation verification
-- **Phase 3: Tests** - Writes failing tests that define expected behavior
-- **Phase 4: Implementation** - Implements code in a tight compile-test loop until all tests pass
+1. **Requirements** - What are we actually building?
+2. **Interfaces** - What's the shape of the solution?
+3. **Tests** - How will we know it works?
+4. **Implementation** - Now write the code.
 
-Each phase transition requires explicit user approval, ensuring human oversight throughout the development process.
+Each phase needs your approval before moving on. You stay in control.
 
-### Framework Philosophy
+## Why This Matters
 
-**This is a framework, not a complete solution.** The TDD workflow provides structure and enforcement - it ensures Claude follows a disciplined process with clear goals and closed feedback loops. However, the *quality* of the generated code depends largely on the **agents** loaded during each phase.
+The interesting thing isn't the TDD methodology itself - it's what happens when you use it consistently with AI. You start spending less time on implementation details and more time on product questions: What should this do? What are the edge cases? How should errors behave?
 
-The workflow itself:
-- Enforces phase progression (no skipping steps)
-- Provides compilation and test feedback loops
-- Blocks incorrect file edits per phase
-- Requires human approval at each gate
+The tests become your specification. Claude fulfills the contract.
 
-The agents determine:
-- Code style and patterns used
-- Architecture decisions
-- Testing strategies and coverage
-- Domain-specific implementation details
+## It Gets Better With Custom Agents
 
-**Default agents are generic.** This tool ships with general-purpose developer agents that work across any project. For significantly better results, we recommend creating **custom agents** with:
+The default setup works fine for general development. But the real power comes when you add custom agents - domain experts, architecture guides, testing specialists that auto-load at each phase. They shape how Claude thinks about your specific problem space.
 
-- **Domain expertise** (e.g., financial systems, healthcare, e-commerce)
-- **Technical specialization** (e.g., API design, database optimization, security)
-- **Team conventions** (e.g., your company's coding standards, preferred patterns)
+This isn't a magic tool that eliminates coding overnight. But it's a solid step toward a workflow where you focus on *what* and AI handles *how*.
 
-See [Custom Agents](#custom-agents) for how to create and configure phase-specific agents.
+See [Custom Agents](#custom-agents) for how to create phase-specific agents.
 
 ## Features
 
@@ -51,7 +41,6 @@ See [Custom Agents](#custom-agents) for how to create and configure phase-specif
 ### Prerequisites
 
 - **Python 3.6+** - Required for hook scripts
-- **Bash** - Required for hook execution
 - **Claude Code** - The CLI tool this integrates with
 
 ### Installation
@@ -117,9 +106,11 @@ Create a custom agent:
 
 You can create custom agents that auto-load during specific TDD phases. This is useful for domain-specific guidance (e.g., an API design expert for Phase 2, or a testing specialist for Phase 3).
 
+See [Custom Agents Guide](docs/custom-agents.md) for detailed instructions, examples, and tips.
+
 ### Creating an Agent
 
-Use `/tdd-create-agent` to interactively create an agent, or manually create a file in `~/.claude/agents/` with YAML frontmatter:
+Use `/tdd-create-agent` to interactively create an agent, or manually create a file in `~/.claude/tdd-workflow/agents/` with YAML frontmatter:
 
 ```markdown
 ---

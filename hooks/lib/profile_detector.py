@@ -18,19 +18,18 @@ import sys
 from pathlib import Path
 
 
-def read_override(override_file: str) -> None:
-    """Read activeProfile from override file."""
+def get_override(override_file: str) -> str:
+    """Read activeProfile from override file. Returns profile name or empty string."""
     try:
         with open(override_file, 'r') as f:
             profile = json.load(f).get('activeProfile', '')
-            if profile:
-                print(profile)
+            return profile or ''
     except Exception:
-        pass
+        return ''
 
 
-def detect_profile(project_dir: str, config_file: str) -> None:
-    """Auto-detect profile based on project files."""
+def detect_profile(project_dir: str, config_file: str) -> str:
+    """Auto-detect profile based on project files. Returns profile name or empty string."""
     project_path = Path(project_dir).resolve()
 
     try:
@@ -72,10 +71,10 @@ def detect_profile(project_dir: str, config_file: str) -> None:
 
         # Return highest scoring profile
         if scores:
-            best = max(scores, key=scores.get)
-            print(best)
+            return max(scores, key=scores.get)
+        return ''
     except Exception:
-        pass
+        return ''
 
 
 def main() -> None:
@@ -92,12 +91,16 @@ def main() -> None:
         if len(sys.argv) < 3:
             print("Usage: profile_detector.py override <override_file>", file=sys.stderr)
             sys.exit(1)
-        read_override(sys.argv[2])
+        result = get_override(sys.argv[2])
+        if result:
+            print(result)
     elif command == "detect":
         if len(sys.argv) < 4:
             print("Usage: profile_detector.py detect <project_dir> <config_file>", file=sys.stderr)
             sys.exit(1)
-        detect_profile(sys.argv[2], sys.argv[3])
+        result = detect_profile(sys.argv[2], sys.argv[3])
+        if result:
+            print(result)
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
         sys.exit(1)

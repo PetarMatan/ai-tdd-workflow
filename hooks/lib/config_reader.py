@@ -15,8 +15,8 @@ import json
 import sys
 
 
-def config_get(path: str, config_file: str) -> None:
-    """Read a value from JSON config using dot-notation path."""
+def get_config_value(path: str, config_file: str):
+    """Read a value from JSON config using dot-notation path. Returns the value or None."""
     parts = path.split('.')
 
     try:
@@ -27,16 +27,11 @@ def config_get(path: str, config_file: str) -> None:
             if isinstance(data, dict):
                 data = data.get(part)
             else:
-                data = None
-                break
+                return None
 
-        if data is not None:
-            if isinstance(data, (dict, list)):
-                print(json.dumps(data))
-            else:
-                print(data)
+        return data
     except Exception:
-        sys.exit(1)
+        return None
 
 
 def main() -> None:
@@ -52,7 +47,12 @@ def main() -> None:
         if len(sys.argv) < 4:
             print("Usage: config_reader.py get <path> <config_file>", file=sys.stderr)
             sys.exit(1)
-        config_get(sys.argv[2], sys.argv[3])
+        result = get_config_value(sys.argv[2], sys.argv[3])
+        if result is not None:
+            if isinstance(result, (dict, list)):
+                print(json.dumps(result))
+            else:
+                print(result)
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
         sys.exit(1)

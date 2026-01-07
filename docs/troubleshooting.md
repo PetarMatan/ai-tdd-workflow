@@ -47,7 +47,7 @@
 
 2. Check hooks are executable:
    ```bash
-   chmod +x ~/.claude/tdd-workflow/hooks/*.sh
+   chmod +x ~/.claude/tdd-workflow/hooks/*.py
    ```
 
 3. Verify settings.json has hooks configured:
@@ -57,7 +57,7 @@
 
 4. Check for syntax errors in hooks:
    ```bash
-   bash -n ~/.claude/tdd-workflow/hooks/tdd-orchestrator.sh
+   python3 -m py_compile ~/.claude/tdd-workflow/hooks/tdd-orchestrator.py
    ```
 
 ### Wrong Profile Detected

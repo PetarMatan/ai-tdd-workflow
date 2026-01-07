@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/tdd-workflow/hooks/tdd-phase-guard.sh",
+            "command": "python3 ~/.claude/tdd-workflow/hooks/tdd-phase-guard.py",
             "timeout": 5000
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/tdd-workflow/hooks/auto-compile.sh",
+            "command": "python3 ~/.claude/tdd-workflow/hooks/tdd-auto-compile.py",
             "timeout": 120000
           }
         ]
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/tdd-workflow/hooks/tdd-auto-test.sh",
+            "command": "python3 ~/.claude/tdd-workflow/hooks/tdd-auto-test.py",
             "timeout": 300000
           }
         ]
@@ -50,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/tdd-workflow/hooks/tdd-orchestrator.sh",
+            "command": "python3 ~/.claude/tdd-workflow/hooks/tdd-orchestrator.py",
             "timeout": 120000
           }
         ]
@@ -61,7 +61,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/tdd-workflow/hooks/cleanup-markers.sh",
+            "command": "python3 ~/.claude/tdd-workflow/hooks/tdd-cleanup-markers.py",
             "timeout": 5000
           }
         ]
