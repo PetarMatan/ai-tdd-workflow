@@ -2,7 +2,7 @@
 set -e
 
 # TDD Workflow Installer for Claude Code
-# Version: 1.0.0
+# Version: 2.0.0
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/PetarMatan/ai-tdd-workflow/main/install.sh | bash
@@ -66,6 +66,41 @@ fi
 
 echo ""
 
+# === Supervisor Mode Prompt ===
+echo "=== Installation Options ==="
+echo ""
+echo "TDD Workflow supports two modes:"
+echo ""
+echo "  1. CLI Mode (default)"
+echo "     - Use /tdd command within Claude Code"
+echo "     - Single session, hooks manage phase transitions"
+echo "     - No additional dependencies"
+echo ""
+echo "  2. Supervisor Mode (optional)"
+echo "     - Run 'tdd-start' from terminal"
+echo "     - Each TDD phase runs in a fresh Claude session"
+echo "     - Clean context per phase, summaries passed between phases"
+echo "     - Requires: claude-agent-sdk (pip install claude-agent-sdk)"
+echo ""
+
+INSTALL_SUPERVISOR=""
+while [[ -z "$INSTALL_SUPERVISOR" ]]; do
+    read -p "Install Supervisor Mode? [y/N]: " response
+    case "$response" in
+        [yY]|[yY][eE][sS])
+            INSTALL_SUPERVISOR="yes"
+            ;;
+        [nN]|[nN][oO]|"")
+            INSTALL_SUPERVISOR="no"
+            ;;
+        *)
+            echo "Please answer y or n."
+            ;;
+    esac
+done
+
+echo ""
+
 # Backup existing .claude folder before any modifications
 if [[ -d "${HOME}/.claude" ]]; then
     BACKUP_DIR="${HOME}/.claude-backup-$(date +%Y%m%d-%H%M%S)"
@@ -109,6 +144,49 @@ cp "$SOURCE_DIR/skills/tdd.md" "$COMMANDS_DIR/tdd.md"
 cp "$SOURCE_DIR/skills/tdd-status.md" "$COMMANDS_DIR/tdd-status.md"
 cp "$SOURCE_DIR/skills/tdd-reset.md" "$COMMANDS_DIR/tdd-reset.md"
 cp "$SOURCE_DIR/skills/tdd-create-agent.md" "$COMMANDS_DIR/tdd-create-agent.md"
+
+# === Install Supervisor Mode if requested ===
+if [[ "$INSTALL_SUPERVISOR" == "yes" ]]; then
+    echo "Installing Supervisor Mode..."
+
+    # Copy supervisor module
+    cp -r "$SOURCE_DIR/tdd_supervisor" "$INSTALL_DIR/"
+
+    # Copy bin scripts
+    mkdir -p "$INSTALL_DIR/bin"
+    cp "$SOURCE_DIR/bin/tdd-start" "$INSTALL_DIR/bin/"
+    chmod +x "$INSTALL_DIR/bin/tdd-start"
+
+    # Check for claude-agent-sdk
+    SDK_INSTALLED=""
+    if python3 -c "import claude_agent_sdk" 2>/dev/null; then
+        SDK_INSTALLED="yes"
+        echo "  claude-agent-sdk: found"
+    else
+        echo "  claude-agent-sdk: NOT FOUND"
+        echo ""
+        echo "  Supervisor Mode requires claude-agent-sdk."
+        read -p "  Install it now? [Y/n]: " install_sdk
+        case "$install_sdk" in
+            [nN]|[nN][oO])
+                echo "  Skipping SDK installation. Install manually with:"
+                echo "    pip install claude-agent-sdk"
+                ;;
+            *)
+                echo "  Installing claude-agent-sdk..."
+                if pip install claude-agent-sdk; then
+                    SDK_INSTALLED="yes"
+                    echo "  claude-agent-sdk installed successfully."
+                else
+                    echo "  WARNING: Failed to install claude-agent-sdk."
+                    echo "  Install manually with: pip install claude-agent-sdk"
+                fi
+                ;;
+        esac
+    fi
+
+    echo "Supervisor Mode installed."
+fi
 
 # Update settings.json
 update_settings() {
@@ -160,10 +238,25 @@ if [[ -n "$BACKUP_DIR" ]]; then
 fi
 echo ""
 echo "Available commands:"
-echo "  /tdd           - Start TDD mode"
-echo "  /tdd-status    - Check current TDD status"
-echo "  /tdd-reset     - Reset TDD state"
-echo "  /tdd-create-agent  - Create a custom agent"
+echo "  /tdd              - Start TDD mode (CLI)"
+echo "  /tdd-status       - Check current TDD status"
+echo "  /tdd-reset        - Reset TDD state"
+echo "  /tdd-create-agent - Create a custom agent"
+if [[ "$INSTALL_SUPERVISOR" == "yes" ]]; then
+    echo ""
+    echo "Supervisor Mode:"
+    echo "  $INSTALL_DIR/bin/tdd-start"
+    echo ""
+    echo "  Or add to PATH:"
+    echo "    export PATH=\"\$PATH:$INSTALL_DIR/bin\""
+    echo ""
+    echo "  Then run: tdd-start"
+    if [[ "$SDK_INSTALLED" != "yes" ]]; then
+        echo ""
+        echo "  NOTE: Install claude-agent-sdk before using supervisor mode:"
+        echo "    pip install claude-agent-sdk"
+    fi
+fi
 echo ""
 echo "Restart Claude Code to apply changes."
 echo ""

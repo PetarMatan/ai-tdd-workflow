@@ -3,6 +3,7 @@
 TDD Workflow - Marker Management
 
 Handles session-scoped marker files for TDD phase tracking.
+Supports both standalone session mode and supervisor mode.
 """
 
 import os
@@ -15,13 +16,30 @@ class MarkerManager:
     """Manages TDD marker files with session isolation."""
 
     def __init__(self, session_id: str = "unknown"):
-        """Initialize marker manager with session ID."""
+        """
+        Initialize marker manager with session ID.
+
+        In supervisor mode (TDD_SUPERVISOR_MARKERS_DIR set), uses the
+        supervisor's marker directory instead of session-based one.
+        """
         self.base_dir = Path.home() / ".claude" / "tmp"
         self.session_id = session_id
-        self.markers_dir = self.base_dir / f"tdd-{session_id}"
+
+        # Check for supervisor mode - use supervisor's marker directory
+        supervisor_markers_dir = os.environ.get("TDD_SUPERVISOR_MARKERS_DIR")
+        if supervisor_markers_dir:
+            self.markers_dir = Path(supervisor_markers_dir)
+            self._supervisor_mode = True
+        else:
+            self.markers_dir = self.base_dir / f"tdd-{session_id}"
+            self._supervisor_mode = False
 
         # Ensure directory exists
         self.markers_dir.mkdir(parents=True, exist_ok=True)
+
+    def is_supervisor_mode(self) -> bool:
+        """Check if running under supervisor control."""
+        return self._supervisor_mode or os.environ.get("TDD_SUPERVISOR_ACTIVE") == "1"
 
     @property
     def tdd_mode(self) -> Path:

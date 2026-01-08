@@ -134,5 +134,80 @@ class TestMarkerManager:
                 assert display == "~/.claude/tmp/tdd-abc123"
 
 
+class TestSupervisorMode:
+    """Tests for supervisor mode functionality."""
+
+    def test_is_supervisor_mode_false_by_default(self):
+        """Supervisor mode should be false when no env vars set."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                # Ensure env vars are not set
+                env = os.environ.copy()
+                env.pop("TDD_SUPERVISOR_ACTIVE", None)
+                env.pop("TDD_SUPERVISOR_MARKERS_DIR", None)
+
+                with patch.dict(os.environ, env, clear=True):
+                    manager = MarkerManager("test-session")
+                    assert manager.is_supervisor_mode() is False
+
+    def test_is_supervisor_mode_true_with_active_env_var(self):
+        """Supervisor mode should be true when TDD_SUPERVISOR_ACTIVE=1."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                with patch.dict(os.environ, {"TDD_SUPERVISOR_ACTIVE": "1"}):
+                    manager = MarkerManager("test-session")
+                    assert manager.is_supervisor_mode() is True
+
+    def test_is_supervisor_mode_true_with_markers_dir_env_var(self):
+        """Supervisor mode should be true when TDD_SUPERVISOR_MARKERS_DIR is set."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                supervisor_dir = Path(tmpdir) / "supervisor-markers"
+                supervisor_dir.mkdir(parents=True)
+
+                with patch.dict(os.environ, {"TDD_SUPERVISOR_MARKERS_DIR": str(supervisor_dir)}, clear=False):
+                    manager = MarkerManager("test-session")
+                    assert manager.is_supervisor_mode() is True
+
+    def test_init_uses_supervisor_dir_when_env_set(self):
+        """MarkerManager should use supervisor's marker directory when env var set."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                supervisor_dir = Path(tmpdir) / "custom-supervisor-dir"
+                supervisor_dir.mkdir(parents=True)
+
+                with patch.dict(os.environ, {"TDD_SUPERVISOR_MARKERS_DIR": str(supervisor_dir)}, clear=False):
+                    manager = MarkerManager("test-session")
+                    assert manager.markers_dir == supervisor_dir
+
+    def test_init_uses_session_dir_when_no_supervisor_env(self):
+        """MarkerManager should use session-based directory when not in supervisor mode."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                # Clear supervisor env vars
+                env = os.environ.copy()
+                env.pop("TDD_SUPERVISOR_MARKERS_DIR", None)
+                env.pop("TDD_SUPERVISOR_ACTIVE", None)
+
+                with patch.dict(os.environ, env, clear=True):
+                    manager = MarkerManager("my-session")
+                    assert "tdd-my-session" in str(manager.markers_dir)
+
+    def test_supervisor_mode_markers_shared(self):
+        """Multiple MarkerManagers in supervisor mode should share the same directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                supervisor_dir = Path(tmpdir) / "shared-supervisor-dir"
+                supervisor_dir.mkdir(parents=True)
+
+                with patch.dict(os.environ, {"TDD_SUPERVISOR_MARKERS_DIR": str(supervisor_dir)}, clear=False):
+                    manager1 = MarkerManager("session-1")
+                    manager2 = MarkerManager("session-2")
+
+                    # Both should use the same supervisor directory
+                    assert manager1.markers_dir == manager2.markers_dir
+                    assert manager1.markers_dir == supervisor_dir
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

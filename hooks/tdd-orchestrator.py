@@ -70,6 +70,23 @@ def main():
     if not markers.is_tdd_active():
         return
 
+    # In supervisor mode, skip phase transition logic
+    # Supervisor handles phase transitions; hooks only load agents
+    if markers.is_supervisor_mode():
+        logger.log_tdd("Supervisor mode: skipping orchestrator phase transitions")
+        current_phase = markers.get_phase()
+        phase_agents = agents.load_phase_agents(current_phase, logger)
+        if phase_agents:
+            # Just provide agents, don't block or manage transitions
+            print(json.dumps({
+                "decision": "approve",
+                "hookSpecificOutput": {
+                    "hookEventName": "Stop",
+                    "additionalContext": phase_agents
+                }
+            }, indent=2))
+        return
+
     # Initialize phase if not set
     current_phase = markers.get_phase()
     if not markers.tdd_phase.exists():
