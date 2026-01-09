@@ -194,45 +194,66 @@ class TestGetSummaryPrompt:
         assert ContextBuilder.get_summary_prompt(5) == ""
         assert ContextBuilder.get_summary_prompt(-1) == ""
 
-    def test_get_summary_prompt_phase1_mentions_concise(self):
+    def test_get_summary_prompt_phase1_mentions_specific(self):
+        """Phase 1 summary should request specific/detailed requirements."""
         prompt = ContextBuilder.get_summary_prompt(1)
-        assert "concise" in prompt.lower()
+        assert "specific" in prompt.lower() or "comprehensive" in prompt.lower()
 
-    def test_get_summary_prompt_phase2_mentions_concise(self):
+    def test_get_summary_prompt_phase2_file_paths(self):
+        """Phase 2 summary should request file paths."""
         prompt = ContextBuilder.get_summary_prompt(2)
-        assert "concise" in prompt.lower()
+        assert "File" in prompt or "file" in prompt
+        assert "path" in prompt.lower()
 
-    def test_get_summary_prompt_phase3_mentions_implementation(self):
+    def test_get_summary_prompt_phase3_mentions_coverage(self):
         prompt = ContextBuilder.get_summary_prompt(3)
-        assert "implementation" in prompt.lower()
+        assert "coverage" in prompt.lower() or "Coverage" in prompt
 
 
-class TestSummaryPromptConstants:
-    """Tests for summary prompt constants."""
+class TestGetReviewPrompt:
+    """Tests for get_review_prompt method."""
 
-    def test_requirements_summary_prompt_exists(self):
-        assert hasattr(ContextBuilder, 'REQUIREMENTS_SUMMARY_PROMPT')
-        assert len(ContextBuilder.REQUIREMENTS_SUMMARY_PROMPT) > 0
+    def test_get_review_prompt_phase1(self):
+        prompt = ContextBuilder.get_review_prompt(1)
+        assert len(prompt) > 0
+        assert "review" in prompt.lower() or "verify" in prompt.lower()
 
-    def test_interfaces_summary_prompt_exists(self):
-        assert hasattr(ContextBuilder, 'INTERFACES_SUMMARY_PROMPT')
-        assert len(ContextBuilder.INTERFACES_SUMMARY_PROMPT) > 0
+    def test_get_review_prompt_phase2(self):
+        prompt = ContextBuilder.get_review_prompt(2)
+        assert len(prompt) > 0
+        assert "review" in prompt.lower() or "verify" in prompt.lower()
 
-    def test_tests_summary_prompt_exists(self):
-        assert hasattr(ContextBuilder, 'TESTS_SUMMARY_PROMPT')
-        assert len(ContextBuilder.TESTS_SUMMARY_PROMPT) > 0
+    def test_get_review_prompt_phase3(self):
+        prompt = ContextBuilder.get_review_prompt(3)
+        assert len(prompt) > 0
+        assert "review" in prompt.lower() or "verify" in prompt.lower()
 
-    def test_requirements_prompt_has_format_instructions(self):
-        prompt = ContextBuilder.REQUIREMENTS_SUMMARY_PROMPT
-        assert "format" in prompt.lower() or "Output ONLY" in prompt
+    def test_get_review_prompt_phase4_returns_empty(self):
+        prompt = ContextBuilder.get_review_prompt(4)
+        assert prompt == ""
 
-    def test_interfaces_prompt_has_format_instructions(self):
-        prompt = ContextBuilder.INTERFACES_SUMMARY_PROMPT
-        assert "format" in prompt.lower() or "Output ONLY" in prompt
+    def test_get_review_prompt_invalid_phase_returns_empty(self):
+        assert ContextBuilder.get_review_prompt(0) == ""
+        assert ContextBuilder.get_review_prompt(5) == ""
+        assert ContextBuilder.get_review_prompt(-1) == ""
 
-    def test_tests_prompt_has_format_instructions(self):
-        prompt = ContextBuilder.TESTS_SUMMARY_PROMPT
-        assert "format" in prompt.lower() or "Output ONLY" in prompt
+    def test_get_review_prompt_contains_checklist(self):
+        """Review prompts should contain verification checklist."""
+        for phase in [1, 2, 3]:
+            prompt = ContextBuilder.get_review_prompt(phase)
+            assert "[ ]" in prompt or "checklist" in prompt.lower()
+
+    def test_get_review_prompt_contains_gaps_signal(self):
+        """Review prompts should mention GAPS_FOUND signal."""
+        for phase in [1, 2, 3]:
+            prompt = ContextBuilder.get_review_prompt(phase)
+            assert "GAPS_FOUND" in prompt
+
+    def test_get_review_prompt_contains_verified_signal(self):
+        """Review prompts should mention SUMMARY_VERIFIED signal."""
+        for phase in [1, 2, 3]:
+            prompt = ContextBuilder.get_review_prompt(phase)
+            assert "SUMMARY_VERIFIED" in prompt
 
 
 class TestContextBuilderStaticMethods:
@@ -257,6 +278,10 @@ class TestContextBuilderStaticMethods:
 
     def test_get_summary_prompt_is_static(self):
         result = ContextBuilder.get_summary_prompt(1)
+        assert isinstance(result, str)
+
+    def test_get_review_prompt_is_static(self):
+        result = ContextBuilder.get_review_prompt(1)
         assert isinstance(result, str)
 
 

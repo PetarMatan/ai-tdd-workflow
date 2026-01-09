@@ -8,6 +8,7 @@
 #   -u, --unit        Run only unit tests (bash)
 #   -i, --integration Run only integration tests (bash)
 #   -v, --verbose     Verbose output
+#   -e, --e2e         Include E2E tests (skipped by default)
 #   --filter PATTERN  Run tests matching pattern
 
 set -e
@@ -21,6 +22,7 @@ RUN_BASH=true
 RUN_UNIT=true
 RUN_INTEGRATION=true
 VERBOSE=""
+RUN_E2E=""
 FILTER=""
 
 # Parse arguments
@@ -50,6 +52,10 @@ while [[ $# -gt 0 ]]; do
             VERBOSE="yes"
             shift
             ;;
+        -e|--e2e)
+            RUN_E2E="yes"
+            shift
+            ;;
         --filter)
             FILTER="$2"
             shift 2
@@ -63,6 +69,7 @@ while [[ $# -gt 0 ]]; do
             echo "  -u, --unit        Run only unit tests (bash)"
             echo "  -i, --integration Run only integration tests (bash)"
             echo "  -v, --verbose     Verbose output"
+            echo "  -e, --e2e         Include E2E tests (skipped by default)"
             echo "  --filter PATTERN  Run tests matching pattern"
             exit 0
             ;;
@@ -107,6 +114,12 @@ if [[ "$RUN_PYTHON" == "true" ]]; then
         PYTEST_FILTER=""
         if [[ -n "$FILTER" ]]; then
             PYTEST_FILTER="-k $FILTER"
+        fi
+
+        # Set E2E environment variable if requested
+        if [[ -n "$RUN_E2E" ]]; then
+            export RUN_E2E_TESTS=1
+            echo "E2E tests enabled"
         fi
 
         cd "$PROJECT_ROOT"

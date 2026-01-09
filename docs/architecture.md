@@ -4,6 +4,8 @@
 
 The TDD Workflow system is a hook-based enforcement mechanism for Claude Code that implements Test-Driven Development through a state machine.
 
+This document covers CLI mode architecture. For Supervisor mode (multi-session orchestration), see [supervisor-mode.md](supervisor-mode.md).
+
 ## Components
 
 ```

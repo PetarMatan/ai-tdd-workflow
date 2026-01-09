@@ -23,8 +23,7 @@ class TestArgumentParsing:
         parser = argparse.ArgumentParser()
         parser.add_argument("-d", "--dir", type=str, default=".")
         parser.add_argument("-t", "--task", type=str, default=None)
-        parser.add_argument("-i", "--id", type=str, default=None)
-
+        
         args = parser.parse_args([])
         assert args.dir == "."
 
@@ -33,8 +32,7 @@ class TestArgumentParsing:
         parser = argparse.ArgumentParser()
         parser.add_argument("-d", "--dir", type=str, default=".")
         parser.add_argument("-t", "--task", type=str, default=None)
-        parser.add_argument("-i", "--id", type=str, default=None)
-
+        
         args = parser.parse_args(["-d", "/custom/path"])
         assert args.dir == "/custom/path"
 
@@ -43,8 +41,7 @@ class TestArgumentParsing:
         parser = argparse.ArgumentParser()
         parser.add_argument("-d", "--dir", type=str, default=".")
         parser.add_argument("-t", "--task", type=str, default=None)
-        parser.add_argument("-i", "--id", type=str, default=None)
-
+        
         args = parser.parse_args(["--dir", "/another/path"])
         assert args.dir == "/another/path"
 
@@ -53,8 +50,7 @@ class TestArgumentParsing:
         parser = argparse.ArgumentParser()
         parser.add_argument("-d", "--dir", type=str, default=".")
         parser.add_argument("-t", "--task", type=str, default=None)
-        parser.add_argument("-i", "--id", type=str, default=None)
-
+        
         args = parser.parse_args(["-t", "Build a REST API"])
         assert args.task == "Build a REST API"
 
@@ -63,68 +59,32 @@ class TestArgumentParsing:
         parser = argparse.ArgumentParser()
         parser.add_argument("-d", "--dir", type=str, default=".")
         parser.add_argument("-t", "--task", type=str, default=None)
-        parser.add_argument("-i", "--id", type=str, default=None)
-
+        
         args = parser.parse_args(["--task", "Add authentication"])
         assert args.task == "Add authentication"
-
-    def test_parse_args_workflow_id_flag(self):
-        """Workflow ID via -i flag."""
-        parser = argparse.ArgumentParser()
-        parser.add_argument("-d", "--dir", type=str, default=".")
-        parser.add_argument("-t", "--task", type=str, default=None)
-        parser.add_argument("-i", "--id", type=str, default=None)
-
-        args = parser.parse_args(["-i", "workflow-123"])
-        assert args.id == "workflow-123"
-
-    def test_parse_args_workflow_id_long_form(self):
-        """Workflow ID via --id flag."""
-        parser = argparse.ArgumentParser()
-        parser.add_argument("-d", "--dir", type=str, default=".")
-        parser.add_argument("-t", "--task", type=str, default=None)
-        parser.add_argument("-i", "--id", type=str, default=None)
-
-        args = parser.parse_args(["--id", "my-workflow"])
-        assert args.id == "my-workflow"
 
     def test_parse_args_all_flags_combined(self):
         """All flags can be combined."""
         parser = argparse.ArgumentParser()
         parser.add_argument("-d", "--dir", type=str, default=".")
         parser.add_argument("-t", "--task", type=str, default=None)
-        parser.add_argument("-i", "--id", type=str, default=None)
 
         args = parser.parse_args([
             "-d", "/project",
             "-t", "Build feature",
-            "-i", "wf-456"
         ])
 
         assert args.dir == "/project"
         assert args.task == "Build feature"
-        assert args.id == "wf-456"
 
     def test_parse_args_defaults_task_to_none(self):
         """Task defaults to None when not provided."""
         parser = argparse.ArgumentParser()
         parser.add_argument("-d", "--dir", type=str, default=".")
         parser.add_argument("-t", "--task", type=str, default=None)
-        parser.add_argument("-i", "--id", type=str, default=None)
-
+        
         args = parser.parse_args([])
         assert args.task is None
-
-    def test_parse_args_defaults_id_to_none(self):
-        """Workflow ID defaults to None when not provided."""
-        parser = argparse.ArgumentParser()
-        parser.add_argument("-d", "--dir", type=str, default=".")
-        parser.add_argument("-t", "--task", type=str, default=None)
-        parser.add_argument("-i", "--id", type=str, default=None)
-
-        args = parser.parse_args([])
-        assert args.id is None
-
 
 class TestDirectoryValidation:
     """Tests for directory validation."""

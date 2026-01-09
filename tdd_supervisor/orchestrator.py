@@ -8,12 +8,14 @@ managing context transfer between phases.
 
 import asyncio
 import os
+import select
 import sys
 from pathlib import Path
-from typing import Optional, AsyncIterator
+from typing import Optional, List
 
 try:
     from claude_agent_sdk import query, ClaudeAgentOptions
+    from claude_agent_sdk.types import AssistantMessage, ResultMessage
 except ImportError:
     print("Error: claude-agent-sdk not installed.", file=sys.stderr)
     print("Install with: pip install claude-agent-sdk", file=sys.stderr)
@@ -21,6 +23,57 @@ except ImportError:
 
 from .markers import SupervisorMarkers
 from .context import ContextBuilder
+from .templates import (
+    format_phase_header,
+    format_workflow_header,
+    format_phase_complete_banner,
+    format_workflow_complete,
+)
+
+
+def read_multiline_input(prompt: str = "") -> str:
+    """
+    Read user input, handling multi-line paste gracefully.
+
+    When users paste multi-line text, this function collects all
+    lines before returning, rather than processing line-by-line.
+
+    Args:
+        prompt: The prompt to display
+
+    Returns:
+        All input lines joined together
+    """
+    if prompt:
+        print(prompt, end='', flush=True)
+
+    lines: List[str] = []
+
+    # Read the first line (blocks until user types/pastes something)
+    try:
+        first_line = sys.stdin.readline()
+        if not first_line:  # EOF
+            return ""
+        lines.append(first_line.rstrip('\n'))
+    except (EOFError, KeyboardInterrupt):
+        return ""
+
+    # Check if more input is immediately available (from paste)
+    # Use a small timeout to catch rapid multi-line pastes
+    while True:
+        # select() checks if stdin has more data ready
+        readable, _, _ = select.select([sys.stdin], [], [], 0.05)
+        if readable:
+            line = sys.stdin.readline()
+            if line:
+                lines.append(line.rstrip('\n'))
+            else:
+                break
+        else:
+            # No more input pending
+            break
+
+    return '\n'.join(lines)
 
 
 class TDDOrchestrator:
@@ -32,22 +85,25 @@ class TDDOrchestrator:
     """
 
     PHASE_COMPLETE_SIGNAL = "PHASE_COMPLETE"
+    SUMMARY_VERIFIED_SIGNAL = "SUMMARY_VERIFIED"
+    GAPS_FOUND_SIGNAL = "GAPS_FOUND"
 
-    def __init__(
-        self,
-        working_dir: Optional[str] = None,
-        workflow_id: Optional[str] = None,
-    ):
+    PHASE_NAMES = {
+        1: "Requirements Gathering",
+        2: "Interface Design",
+        3: "Test Writing",
+        4: "Implementation",
+    }
+
+    def __init__(self, working_dir: Optional[str] = None):
         """
         Initialize the TDD orchestrator.
 
         Args:
             working_dir: Project working directory (defaults to cwd)
-            workflow_id: Unique workflow ID (auto-generated if not provided)
         """
         self.working_dir = Path(working_dir or os.getcwd()).resolve()
-        self.markers = SupervisorMarkers(workflow_id)
-        self.context_builder = ContextBuilder()
+        self.markers = SupervisorMarkers()
 
         # Validate working directory
         if not self.working_dir.is_dir():
@@ -60,115 +116,85 @@ class TDDOrchestrator:
         Args:
             initial_task: Optional initial task description
         """
-        print(f"\n{'='*60}")
-        print("TDD Supervisor - Starting Workflow")
-        print(f"{'='*60}")
-        print(f"Working directory: {self.working_dir}")
-        print(f"Workflow ID: {self.markers.workflow_id}")
-        print(f"Markers directory: {self.markers.get_marker_dir()}")
-        print(f"{'='*60}\n")
+        print(format_workflow_header(
+            working_dir=str(self.working_dir),
+            workflow_id=self.markers.workflow_id,
+            markers_dir=str(self.markers.get_marker_dir())
+        ))
 
         try:
             # Initialize markers
             self.markers.initialize()
 
-            # Phase 1: Requirements
-            await self._run_phase1(initial_task)
+            # Run all 4 TDD phases
+            await self._run_phase(1, initial_task)
+            await self._run_phase(2)
+            await self._run_phase(3)
+            await self._run_phase(4)
 
-            # Phase 2: Interfaces
-            await self._run_phase2()
-
-            # Phase 3: Tests
-            await self._run_phase3()
-
-            # Phase 4: Implementation
-            await self._run_phase4()
-
-            print(f"\n{'='*60}")
-            print("TDD Workflow Complete!")
-            print(f"{'='*60}\n")
+            print(format_workflow_complete())
 
         except KeyboardInterrupt:
             print("\n\nWorkflow interrupted by user.")
-            print(f"Markers preserved at: {self.markers.get_marker_dir()}")
-            print("You can resume or clean up manually.")
+            self.markers.cleanup()
+            print("Markers cleaned up.")
         except Exception as e:
             print(f"\n\nWorkflow error: {e}", file=sys.stderr)
+            self.markers.cleanup()
             raise
-        finally:
-            # Cleanup on completion (not on interrupt)
-            pass
 
-    async def _run_phase1(self, initial_task: Optional[str] = None) -> None:
-        """Run Phase 1: Requirements Gathering."""
-        print(self._phase_header(1, "Requirements Gathering"))
+    def _build_phase_context(self, phase: int, initial_task: Optional[str] = None) -> str:
+        """Build context for a specific phase."""
+        if phase == 1:
+            return ContextBuilder.build_phase1_context(initial_task)
+        elif phase == 2:
+            return ContextBuilder.build_phase2_context(
+                self.markers.get_requirements_summary()
+            )
+        elif phase == 3:
+            return ContextBuilder.build_phase3_context(
+                self.markers.get_requirements_summary(),
+                self.markers.get_interfaces_list()
+            )
+        elif phase == 4:
+            return ContextBuilder.build_phase4_context(
+                self.markers.get_requirements_summary(),
+                self.markers.get_interfaces_list(),
+                self.markers.get_tests_list()
+            )
+        else:
+            raise ValueError(f"Invalid phase: {phase}")
 
-        self.markers.set_phase(1)
-        context = self.context_builder.build_phase1_context(initial_task)
+    def _save_phase_summary(self, phase: int, summary: str) -> None:
+        """Save summary for a specific phase."""
+        if phase == 1:
+            self.markers.save_requirements_summary(summary)
+        elif phase == 2:
+            self.markers.save_interfaces_list(summary)
+        elif phase == 3:
+            self.markers.save_tests_list(summary)
 
-        # Run session until phase complete
-        await self._run_phase_session(context, 1)
+    async def _run_phase(self, phase: int, initial_task: Optional[str] = None) -> None:
+        """
+        Run a single TDD phase.
 
-        # Generate and save requirements summary
-        summary = await self._generate_summary(1)
-        self.markers.save_requirements_summary(summary)
+        Args:
+            phase: Phase number (1-4)
+            initial_task: Initial task description (phase 1 only)
+        """
+        print(format_phase_header(phase, self.PHASE_NAMES[phase]))
+        self.markers.set_phase(phase)
 
-        print(f"\n[Supervisor] Requirements summary saved.")
+        context = self._build_phase_context(phase, initial_task)
+        await self._run_phase_session(context, phase)
 
-    async def _run_phase2(self) -> None:
-        """Run Phase 2: Interface Design."""
-        print(self._phase_header(2, "Interface Design"))
-
-        self.markers.set_phase(2)
-        requirements = self.markers.get_requirements_summary()
-        context = self.context_builder.build_phase2_context(requirements)
-
-        # Run session until phase complete
-        await self._run_phase_session(context, 2)
-
-        # Generate and save interfaces list
-        interfaces = await self._generate_summary(2)
-        self.markers.save_interfaces_list(interfaces)
-
-        print(f"\n[Supervisor] Interfaces list saved.")
-
-    async def _run_phase3(self) -> None:
-        """Run Phase 3: Test Writing."""
-        print(self._phase_header(3, "Test Writing"))
-
-        self.markers.set_phase(3)
-        requirements = self.markers.get_requirements_summary()
-        interfaces = self.markers.get_interfaces_list()
-        context = self.context_builder.build_phase3_context(requirements, interfaces)
-
-        # Run session until phase complete
-        await self._run_phase_session(context, 3)
-
-        # Generate and save tests list
-        tests = await self._generate_summary(3)
-        self.markers.save_tests_list(tests)
-
-        print(f"\n[Supervisor] Tests list saved.")
-
-    async def _run_phase4(self) -> None:
-        """Run Phase 4: Implementation."""
-        print(self._phase_header(4, "Implementation"))
-
-        self.markers.set_phase(4)
-        requirements = self.markers.get_requirements_summary()
-        interfaces = self.markers.get_interfaces_list()
-        tests = self.markers.get_tests_list()
-        context = self.context_builder.build_phase4_context(
-            requirements, interfaces, tests
-        )
-
-        # Run session until tests pass
-        await self._run_phase_session(context, 4)
-
-        print(f"\n[Supervisor] Implementation complete - all tests passing!")
-
-        # Cleanup markers
-        self.markers.cleanup()
+        if phase < 4:
+            summary = await self._generate_and_verify_summary(phase)
+            self._save_phase_summary(phase, summary)
+            print(f"\n[Supervisor] {self.PHASE_NAMES[phase]} summary saved.")
+        else:
+            print(f"\n[Supervisor] Implementation complete - all tests passing!")
+            self.markers.cleanup()
 
     async def _run_phase_session(self, initial_context: str, phase: int) -> None:
         """
@@ -190,34 +216,26 @@ class TDDOrchestrator:
         async for message in query(
             prompt=initial_context,
             options=ClaudeAgentOptions(
-                working_directory=str(self.working_dir),
-                environment=env_vars,
+                cwd=str(self.working_dir),
+                env=env_vars,
             )
         ):
             # Capture session ID
             if hasattr(message, 'session_id') and message.session_id:
                 session_id = message.session_id
 
-            # Display message to user
-            if hasattr(message, 'content'):
-                print(message.content, end='', flush=True)
-
-                # Check for phase completion signal
-                if self.PHASE_COMPLETE_SIGNAL in message.content:
-                    phase_complete = True
-
-            # Handle result messages
-            if hasattr(message, 'result'):
-                if message.result:
-                    print(message.result, end='', flush=True)
+            # Print AssistantMessage content only (ResultMessage contains duplicate)
+            if isinstance(message, AssistantMessage) and message.content:
+                for block in message.content:
+                    if hasattr(block, 'text'):
+                        print(block.text, end='', flush=True)
+                        if self.PHASE_COMPLETE_SIGNAL in block.text:
+                            phase_complete = True
 
         # If phase not complete, continue interactive loop
         while not phase_complete:
-            # Get user input
-            try:
-                user_input = input("\nYou: ").strip()
-            except EOFError:
-                break
+            # Get user input (supports multi-line paste)
+            user_input = read_multiline_input("\nYou: ").strip()
 
             if not user_input:
                 continue
@@ -234,20 +252,18 @@ class TDDOrchestrator:
             async for message in query(
                 prompt=user_input,
                 options=ClaudeAgentOptions(
-                    working_directory=str(self.working_dir),
-                    environment=env_vars,
+                    cwd=str(self.working_dir),
+                    env=env_vars,
                     resume=session_id,
                 )
             ):
-                if hasattr(message, 'content'):
-                    print(message.content, end='', flush=True)
-
-                    if self.PHASE_COMPLETE_SIGNAL in message.content:
-                        phase_complete = True
-
-                if hasattr(message, 'result'):
-                    if message.result:
-                        print(message.result, end='', flush=True)
+                # Print AssistantMessage content only (ResultMessage contains duplicate)
+                if isinstance(message, AssistantMessage) and message.content:
+                    for block in message.content:
+                        if hasattr(block, 'text'):
+                            print(block.text, end='', flush=True)
+                            if self.PHASE_COMPLETE_SIGNAL in block.text:
+                                phase_complete = True
 
         # Ask for user confirmation before proceeding
         if phase < 4:
@@ -255,74 +271,112 @@ class TDDOrchestrator:
 
     async def _confirm_phase_completion(self, phase: int) -> None:
         """Ask user to confirm phase completion."""
-        phase_names = {
-            1: "Requirements",
-            2: "Interfaces",
-            3: "Tests",
-        }
-        name = phase_names.get(phase, f"Phase {phase}")
+        name = self.PHASE_NAMES.get(phase, f"Phase {phase}")
 
-        print(f"\n{'='*40}")
-        print(f"Phase {phase} ({name}) appears complete.")
-        print(f"{'='*40}")
+        print(format_phase_complete_banner(phase, name))
 
         while True:
-            response = input("\nProceed to next phase? [y/n]: ").strip().lower()
-            if response in ['y', 'yes']:
+            response = input("\nProceed to next phase? [y to continue, Ctrl+C to abort]: ").strip().lower()
+            if response in ['y', 'yes', '']:
                 return
-            elif response in ['n', 'no']:
-                print("Continuing current phase...")
-                # Re-run the phase (this is a simplified approach)
-                raise Exception("User requested to continue phase - not yet implemented")
             else:
-                print("Please enter 'y' or 'n'")
+                print("Press 'y' or Enter to continue, or Ctrl+C to abort.")
 
-    async def _generate_summary(self, phase: int) -> str:
+    async def _generate_and_verify_summary(self, phase: int) -> str:
         """
-        Ask Claude to generate a summary for the phase.
+        Generate a summary for the phase with self-review verification.
+
+        This is a two-step process:
+        1. Generate initial summary
+        2. Ask Claude to self-review and fill any gaps
 
         Args:
             phase: Phase number to summarize
 
         Returns:
-            Generated summary text
+            Verified summary text
         """
-        summary_prompt = self.context_builder.get_summary_prompt(phase)
+        # Step 1: Generate initial summary
+        summary_prompt = ContextBuilder.get_summary_prompt(phase)
         if not summary_prompt:
             return ""
 
         print(f"\n[Supervisor] Generating phase {phase} summary...")
 
-        summary_parts = []
+        initial_summary = await self._query_for_text(summary_prompt)
+
+        # Step 2: Self-review
+        review_prompt = ContextBuilder.get_review_prompt(phase)
+        if not review_prompt:
+            return initial_summary
+
+        print(f"[Supervisor] Verifying summary completeness...")
+
+        review_response = await self._query_for_text(review_prompt)
+
+        # Parse review response
+        if review_response.startswith(self.GAPS_FOUND_SIGNAL):
+            # Extract updated summary (everything after the signal line)
+            lines = review_response.split('\n', 1)
+            if len(lines) > 1:
+                updated_summary = lines[1].strip()
+                print(f"[Supervisor] Summary updated with missing items.")
+                return updated_summary
+            else:
+                # Fallback to initial if parsing fails
+                return initial_summary
+        elif review_response.startswith(self.SUMMARY_VERIFIED_SIGNAL):
+            # Extract verified summary
+            lines = review_response.split('\n', 1)
+            if len(lines) > 1:
+                print(f"[Supervisor] Summary verified complete.")
+                return lines[1].strip()
+            else:
+                return initial_summary
+        else:
+            # If response doesn't follow format, use as-is
+            # (Claude might have just output the summary directly)
+            print(f"[Supervisor] Summary captured.")
+            return review_response if review_response else initial_summary
+
+    async def _query_for_text(self, prompt: str, timeout: float = 300.0) -> str:
+        """
+        Send a query and collect the text response.
+
+        Args:
+            prompt: The prompt to send
+            timeout: Maximum time to wait in seconds (default 5 minutes)
+
+        Returns:
+            Collected text response
+        """
+        text_parts: List[str] = []
         env_vars = self.markers.get_env_vars()
 
-        async for message in query(
-            prompt=summary_prompt,
-            options=ClaudeAgentOptions(
-                working_directory=str(self.working_dir),
-                environment=env_vars,
-            )
-        ):
-            if hasattr(message, 'content'):
-                summary_parts.append(message.content)
-            if hasattr(message, 'result') and message.result:
-                summary_parts.append(message.result)
+        async def collect_response() -> None:
+            async for message in query(
+                prompt=prompt,
+                options=ClaudeAgentOptions(
+                    cwd=str(self.working_dir),
+                    env=env_vars,
+                )
+            ):
+                if isinstance(message, AssistantMessage) and message.content:
+                    for block in message.content:
+                        if hasattr(block, 'text'):
+                            text_parts.append(block.text)
 
-        return ''.join(summary_parts)
+        try:
+            await asyncio.wait_for(collect_response(), timeout=timeout)
+        except asyncio.TimeoutError:
+            print(f"\n[Supervisor] Query timed out after {timeout}s", file=sys.stderr)
 
-    def _phase_header(self, phase: int, name: str) -> str:
-        """Generate a phase header for display."""
-        return f"""
-{'='*60}
-PHASE {phase}: {name.upper()}
-{'='*60}
-"""
+        return ''.join(text_parts)
 
 
 async def run_supervisor(
     working_dir: Optional[str] = None,
     task: Optional[str] = None,
-    workflow_id: Optional[str] = None,
 ) -> None:
     """
     Run the TDD supervisor.
@@ -330,10 +384,6 @@ async def run_supervisor(
     Args:
         working_dir: Project working directory
         task: Initial task description
-        workflow_id: Workflow ID for resuming
     """
-    orchestrator = TDDOrchestrator(
-        working_dir=working_dir,
-        workflow_id=workflow_id,
-    )
+    orchestrator = TDDOrchestrator(working_dir=working_dir)
     await orchestrator.run(initial_task=task)

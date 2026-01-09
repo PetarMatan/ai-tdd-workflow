@@ -27,6 +27,34 @@ This isn't a magic tool that eliminates coding overnight. But it's a solid step 
 
 See [Custom Agents](#custom-agents) for how to create phase-specific agents.
 
+## Two Modes: CLI and Supervisor
+
+The TDD workflow supports two modes of operation, designed for different scales of work:
+
+### CLI Mode (Single Session)
+
+Best for: **Normal-sized features** that can be completed in one sitting.
+
+```bash
+# Inside Claude Code
+/tdd
+```
+
+Everything happens in one Claude session. The hooks manage phase transitions, and context accumulates naturally as you work.
+
+### Supervisor Mode (Multi-Session)
+
+Best for: **Large features or projects** where context accumulation becomes a problem.
+
+```bash
+# From terminal
+tdd-start
+```
+
+Each TDD phase runs in a **fresh Claude session** with clean context. Summaries are automatically generated and passed between phases.
+
+See [Supervisor Mode](#supervisor-mode) for details on when and why to use it.
+
 ## Features
 
 - **Multi-language Support** - Pre-configured profiles for Kotlin, TypeScript, JavaScript, Python, Go, Rust, and Java (with npm/pnpm variants)
@@ -35,6 +63,7 @@ See [Custom Agents](#custom-agents) for how to create phase-specific agents.
 - **Auto Compile/Test** - Runs compile and test commands automatically
 - **User Approval Gates** - Human confirms each phase transition
 - **Clean Cleanup** - Session end automatically removes markers
+- **Supervisor Mode** - Multi-session orchestration for large features (prevents context bloat)
 
 ## Quick Start
 
@@ -204,6 +233,23 @@ The workflow automatically detects your project's technology stack. If auto-dete
   "activeProfile": "typescript-npm"
 }
 ```
+
+## Supervisor Mode
+
+For large features or multi-day projects, context accumulation in a single session can degrade AI performance. Supervisor mode solves this by running each TDD phase in a **fresh Claude session**, passing only distilled summaries between phases.
+
+**When to use it:**
+- Large features (2+ hours of work)
+- Multi-day projects
+- When you notice AI getting "confused" in long sessions
+
+**Quick start:**
+```bash
+pip install claude-agent-sdk  # One-time setup
+tdd-start                      # Start supervisor workflow
+```
+
+See [Supervisor Mode Guide](docs/supervisor-mode.md) for details.
 
 ## Troubleshooting
 

@@ -10,7 +10,6 @@ Usage:
 Options:
     -d, --dir PATH      Project working directory (default: current)
     -t, --task TEXT     Initial task description
-    -i, --id ID         Workflow ID (for resuming)
     -h, --help          Show this help message
 """
 
@@ -63,13 +62,6 @@ Environment Variables:
         help="Initial task description",
     )
 
-    parser.add_argument(
-        "-i", "--id",
-        type=str,
-        default=None,
-        help="Workflow ID (for resuming a previous run)",
-    )
-
     args = parser.parse_args()
 
     # Resolve working directory
@@ -93,7 +85,6 @@ Environment Variables:
             run_supervisor(
                 working_dir=str(working_dir),
                 task=args.task,
-                workflow_id=args.id,
             )
         )
     except KeyboardInterrupt:
