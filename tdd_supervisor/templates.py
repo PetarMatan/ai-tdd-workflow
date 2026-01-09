@@ -31,7 +31,7 @@ unambiguous understanding of what needs to be built.
 - Do NOT write any code in this phase
 - Do NOT design interfaces yet
 - Focus entirely on understanding WHAT, not HOW
-- When requirements are confirmed, say "PHASE_COMPLETE" to signal you're ready
+- When requirements are confirmed, output "---PHASE_COMPLETE---" on its own line to signal you're ready
 
 Begin by asking the user what they want to build (if not already provided).
 """
@@ -70,7 +70,7 @@ structural skeleton of the solution WITHOUT implementing business logic.
 - Do NOT implement business logic
 - Method bodies should be stubs only
 - Code MUST compile successfully
-- When interfaces are approved, say "PHASE_COMPLETE" to signal you're ready
+- When interfaces are approved, output "---PHASE_COMPLETE---" on its own line to signal you're ready
 """
 
 PHASE3_CONTEXT = """# TDD Workflow - Phase 3: Test Writing
@@ -104,7 +104,7 @@ that define the expected behavior (Red phase of TDD).
 - Do NOT implement the actual code yet
 - Tests MUST compile
 - Tests SHOULD fail (they test unimplemented code)
-- When tests are approved, say "PHASE_COMPLETE" to signal you're ready
+- When tests are approved, output "---PHASE_COMPLETE---" on its own line to signal you're ready
 """
 
 PHASE4_CONTEXT = """# TDD Workflow - Phase 4: Implementation
@@ -136,7 +136,7 @@ the business logic to make all tests pass (Green phase of TDD).
 ## Important
 - Focus on making tests pass, not on perfect code
 - Run tests after each significant change
-- When ALL tests pass, say "PHASE_COMPLETE" to signal completion
+- When ALL tests pass, output "---PHASE_COMPLETE---" on its own line to signal completion
 """
 
 

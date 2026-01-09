@@ -79,6 +79,30 @@ tdd-start -t "Build a REST API for user management"
 
 Each phase runs interactively. You converse with Claude normally as it works through the phase goals.
 
+**File-based input (recommended for complex requirements):**
+
+For structured requirements with multiple sections, formatting, or detailed specifications, write them in a file and provide the path:
+
+```bash
+You: @/path/to/requirements.md       # Explicit file reference
+You: ./requirements.md               # Relative path (auto-detected)
+You: ~/Desktop/feature-spec.md       # Home path (auto-detected)
+```
+
+This is especially useful for:
+- Pasting Jira tickets or specs
+- Multi-section requirements with headers
+- Code snippets or examples
+- Any content with newlines and formatting
+
+**Quick text input:**
+
+For short responses and follow-ups, just type normally:
+```bash
+You: yes, that looks correct
+You: add error handling for the edge case
+```
+
 **Phase completion signals:**
 - Type `/done`, `/complete`, or `/next` to signal you're ready for the next phase
 - Claude will also detect when phase goals are met
@@ -90,7 +114,7 @@ Each phase runs interactively. You converse with Claude normally as it works thr
 **Phase transitions:**
 At the end of each phase, you'll be asked to confirm:
 ```
-Proceed to next phase? [y/n]
+Proceed to next phase? [y to continue, Ctrl+C to abort]
 ```
 
 ### Command Reference

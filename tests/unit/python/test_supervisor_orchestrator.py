@@ -30,7 +30,7 @@ sys.modules['claude_agent_sdk.types'] = mock_types
 sys.path.insert(0, '.')
 from tdd_supervisor.markers import SupervisorMarkers
 from tdd_supervisor.context import ContextBuilder
-from tdd_supervisor.orchestrator import read_multiline_input
+from tdd_supervisor.orchestrator import read_user_input
 
 
 # Helper to run async functions in tests
@@ -39,111 +39,146 @@ def run_async(coro):
     return asyncio.run(coro)
 
 
-class TestReadMultilineInput:
-    """Tests for read_multiline_input function."""
+class TestReadUserInput:
+    """Tests for read_user_input function with file support."""
 
-    def test_single_line_input(self):
-        """Single line input returns that line."""
-        mock_stdin = io.StringIO("hello world\n")
-
-        with patch('tdd_supervisor.orchestrator.sys.stdin', mock_stdin):
-            with patch('tdd_supervisor.orchestrator.select.select', return_value=([], [], [])):
-                result = read_multiline_input()
-
+    def test_simple_text_input(self):
+        """Simple text input returns that text."""
+        with patch('builtins.input', return_value="hello world"):
+            result = read_user_input()
         assert result == "hello world"
 
-    def test_multiline_paste(self):
-        """Multi-line paste returns all lines joined."""
-        # Simulate pasting 3 lines at once
-        mock_stdin = io.StringIO("line 1\nline 2\nline 3\n")
-
-        # select returns stdin as readable for first 2 calls, then empty
-        select_returns = [
-            ([mock_stdin], [], []),  # More data after line 1
-            ([mock_stdin], [], []),  # More data after line 2
-            ([], [], []),            # No more data after line 3
-        ]
-        select_iter = iter(select_returns)
-
-        with patch('tdd_supervisor.orchestrator.sys.stdin', mock_stdin):
-            with patch('tdd_supervisor.orchestrator.select.select', side_effect=lambda *args: next(select_iter)):
-                result = read_multiline_input()
-
-        assert result == "line 1\nline 2\nline 3"
-
     def test_empty_input_returns_empty_string(self):
-        """Empty input (EOF) returns empty string."""
-        mock_stdin = io.StringIO("")
-
-        with patch('tdd_supervisor.orchestrator.sys.stdin', mock_stdin):
-            result = read_multiline_input()
-
+        """Empty input returns empty string."""
+        with patch('builtins.input', return_value=""):
+            result = read_user_input()
         assert result == ""
 
-    def test_prompt_is_printed(self, capsys):
-        """Prompt is printed before reading input."""
-        mock_stdin = io.StringIO("test\n")
+    def test_eof_returns_empty_string(self):
+        """EOF raises EOFError which returns empty string."""
+        with patch('builtins.input', side_effect=EOFError):
+            result = read_user_input()
+        assert result == ""
 
-        with patch('tdd_supervisor.orchestrator.sys.stdin', mock_stdin):
-            with patch('tdd_supervisor.orchestrator.select.select', return_value=([], [], [])):
-                read_multiline_input("Enter text: ")
+    def test_keyboard_interrupt_returns_empty_string(self):
+        """Ctrl+C returns empty string."""
+        with patch('builtins.input', side_effect=KeyboardInterrupt):
+            result = read_user_input()
+        assert result == ""
 
+    def test_file_input_with_at_prefix(self, capsys):
+        """@/path/to/file loads file content."""
+        file_content = "Multi-line\nrequirements\nfrom file"
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write(file_content)
+            temp_path = f.name
+
+        try:
+            with patch('builtins.input', return_value=f"@{temp_path}"):
+                result = read_user_input()
+
+            assert result == file_content
+            captured = capsys.readouterr()
+            assert "Loaded" in captured.out
+        finally:
+            os.unlink(temp_path)
+
+    def test_file_input_absolute_path(self, capsys):
+        """Absolute path to existing file loads content."""
+        file_content = "Content from absolute path"
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write(file_content)
+            temp_path = f.name
+
+        try:
+            with patch('builtins.input', return_value=temp_path):
+                result = read_user_input()
+
+            assert result == file_content
+        finally:
+            os.unlink(temp_path)
+
+    def test_file_input_relative_path(self, capsys):
+        """Relative path ./file loads content."""
+        file_content = "Content from relative path"
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, dir='.') as f:
+            f.write(file_content)
+            temp_name = os.path.basename(f.name)
+
+        try:
+            with patch('builtins.input', return_value=f"./{temp_name}"):
+                result = read_user_input()
+
+            assert result == file_content
+        finally:
+            os.unlink(temp_name)
+
+    def test_file_input_home_path(self, capsys):
+        """Home path ~/file loads content."""
+        file_content = "Content from home path"
+        home_dir = os.path.expanduser("~")
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, dir=home_dir) as f:
+            f.write(file_content)
+            temp_name = os.path.basename(f.name)
+
+        try:
+            with patch('builtins.input', return_value=f"~/{temp_name}"):
+                result = read_user_input()
+
+            assert result == file_content
+        finally:
+            os.unlink(os.path.join(home_dir, temp_name))
+
+    def test_file_not_found_returns_empty(self, capsys):
+        """Non-existent file with @ prefix returns empty and prints error."""
+        with patch('builtins.input', return_value="@/nonexistent/file.md"):
+            result = read_user_input()
+
+        assert result == ""
         captured = capsys.readouterr()
-        assert "Enter text: " in captured.out
+        assert "File not found" in captured.out
 
-    def test_multiline_with_empty_lines(self):
-        """Multi-line paste with empty lines preserves them."""
-        mock_stdin = io.StringIO("line 1\n\nline 3\n")
+    def test_path_like_text_not_existing_file(self):
+        """Path-like text that's not a file returns as text."""
+        # This looks like a path but doesn't exist, so treat as regular text
+        with patch('builtins.input', return_value="/not/a/real/file"):
+            result = read_user_input()
 
-        select_returns = [
-            ([mock_stdin], [], []),
-            ([mock_stdin], [], []),
-            ([], [], []),
-        ]
-        select_iter = iter(select_returns)
+        assert result == "/not/a/real/file"
 
-        with patch('tdd_supervisor.orchestrator.sys.stdin', mock_stdin):
-            with patch('tdd_supervisor.orchestrator.select.select', side_effect=lambda *args: next(select_iter)):
-                result = read_multiline_input()
+    def test_structured_requirements_from_file(self, capsys):
+        """Complex structured requirements from file."""
+        jira_content = """# User Authentication Feature
 
-        assert result == "line 1\n\nline 3"
+## Description
+Implement OAuth2 login for the application.
 
-    def test_strips_trailing_newlines_per_line(self):
-        """Each line has its trailing newline stripped."""
-        mock_stdin = io.StringIO("line with trailing\n")
-
-        with patch('tdd_supervisor.orchestrator.sys.stdin', mock_stdin):
-            with patch('tdd_supervisor.orchestrator.select.select', return_value=([], [], [])):
-                result = read_multiline_input()
-
-        assert result == "line with trailing"
-        assert not result.endswith('\n')
-
-    def test_handles_jira_style_paste(self):
-        """Handles typical Jira ticket paste with multiple sections."""
-        jira_content = """Title: User Authentication Feature
-Description: Implement OAuth2 login
-Acceptance Criteria:
+## Acceptance Criteria
 - Users can login with Google
 - Users can login with GitHub
 - Session persists for 7 days
+
+## Technical Notes
+Use JWT tokens for session management.
 """
-        mock_stdin = io.StringIO(jira_content)
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write(jira_content)
+            temp_path = f.name
 
-        # Simulate all lines being available at once (paste)
-        def select_side_effect(*args):
-            if mock_stdin.tell() < len(jira_content):
-                return ([mock_stdin], [], [])
-            return ([], [], [])
+        try:
+            with patch('builtins.input', return_value=f"@{temp_path}"):
+                result = read_user_input()
 
-        with patch('tdd_supervisor.orchestrator.sys.stdin', mock_stdin):
-            with patch('tdd_supervisor.orchestrator.select.select', side_effect=select_side_effect):
-                result = read_multiline_input()
-
-        assert "Title: User Authentication Feature" in result
-        assert "Acceptance Criteria:" in result
-        assert "- Users can login with Google" in result
-        assert "- Session persists for 7 days" in result
+            assert "User Authentication Feature" in result
+            assert "Acceptance Criteria" in result
+            assert "- Users can login with Google" in result
+            assert "JWT tokens" in result
+        finally:
+            os.unlink(temp_path)
 
 
 class TestTDDOrchestratorInit:
@@ -194,7 +229,7 @@ class TestOrchestratorSignals:
     def test_phase_complete_signal_exists(self):
         from tdd_supervisor.orchestrator import TDDOrchestrator
         assert hasattr(TDDOrchestrator, 'PHASE_COMPLETE_SIGNAL')
-        assert TDDOrchestrator.PHASE_COMPLETE_SIGNAL == "PHASE_COMPLETE"
+        assert TDDOrchestrator.PHASE_COMPLETE_SIGNAL == "---PHASE_COMPLETE---"
 
     def test_summary_verified_signal_exists(self):
         from tdd_supervisor.orchestrator import TDDOrchestrator
@@ -355,7 +390,7 @@ class TestGenerateAndVerifySummary:
 
                 call_count = 0
 
-                async def mock_query_for_text(prompt):
+                async def mock_query_for_text(prompt, session_id=None):
                     nonlocal call_count
                     call_count += 1
                     if call_count == 1:
@@ -378,7 +413,7 @@ class TestGenerateAndVerifySummary:
 
                 call_count = 0
 
-                async def mock_query_for_text(prompt):
+                async def mock_query_for_text(prompt, session_id=None):
                     nonlocal call_count
                     call_count += 1
                     if call_count == 1:
@@ -400,7 +435,7 @@ class TestGenerateAndVerifySummary:
 
                 call_count = 0
 
-                async def mock_query_for_text(prompt):
+                async def mock_query_for_text(prompt, session_id=None):
                     nonlocal call_count
                     call_count += 1
                     if call_count == 1:
@@ -422,7 +457,7 @@ class TestGenerateAndVerifySummary:
 
                 call_count = 0
 
-                async def mock_query_for_text(prompt):
+                async def mock_query_for_text(prompt, session_id=None):
                     nonlocal call_count
                     call_count += 1
                     if call_count == 1:
@@ -637,16 +672,16 @@ class TestSupervisorEndToEnd:
             # (e.g., "Requirements from Phase 1" would incorrectly match Phase 1)
             if "Phase 4:" in prompt or "Phase 4 of" in prompt:
                 phases_executed.append(4)
-                text = "All tests passing! PHASE_COMPLETE"
+                text = "All tests passing! ---PHASE_COMPLETE---"
             elif "Phase 3:" in prompt or "Phase 3 of" in prompt:
                 phases_executed.append(3)
-                text = "I've written the tests. PHASE_COMPLETE"
+                text = "I've written the tests. ---PHASE_COMPLETE---"
             elif "Phase 2:" in prompt or "Phase 2 of" in prompt:
                 phases_executed.append(2)
-                text = "I've designed the interfaces. PHASE_COMPLETE"
+                text = "I've designed the interfaces. ---PHASE_COMPLETE---"
             elif "Phase 1:" in prompt or "Phase 1 of" in prompt:
                 phases_executed.append(1)
-                text = "I understand you want to build a feature. PHASE_COMPLETE"
+                text = "I understand you want to build a feature. ---PHASE_COMPLETE---"
             elif "summary" in prompt.lower():
                 # Summary generation prompts
                 text = "# Summary\n- Item 1\n- Item 2"
@@ -786,16 +821,16 @@ class TestSupervisorEndToEnd:
 
                     if "Phase 1" in prompt:
                         phases_executed.append(1)
-                        text = "PHASE_COMPLETE"
+                        text = "---PHASE_COMPLETE---"
                     elif "Phase 2" in prompt:
                         phases_executed.append(2)
-                        text = "PHASE_COMPLETE"
+                        text = "---PHASE_COMPLETE---"
                     elif "Phase 3" in prompt:
                         phases_executed.append(3)
-                        text = "PHASE_COMPLETE"
+                        text = "---PHASE_COMPLETE---"
                     elif "Phase 4" in prompt:
                         phases_executed.append(4)
-                        text = "PHASE_COMPLETE"
+                        text = "---PHASE_COMPLETE---"
                     else:
                         text = "SUMMARY_VERIFIED\n# Summary"
 

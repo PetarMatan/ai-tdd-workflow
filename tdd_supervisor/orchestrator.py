@@ -8,7 +8,6 @@ managing context transfer between phases.
 
 import asyncio
 import os
-import select
 import sys
 from pathlib import Path
 from typing import Optional, List
@@ -31,49 +30,60 @@ from .templates import (
 )
 
 
-def read_multiline_input(prompt: str = "") -> str:
+def read_user_input(prompt: str = "") -> str:
     """
-    Read user input, handling multi-line paste gracefully.
+    Read user input, supporting both direct text and file paths.
 
-    When users paste multi-line text, this function collects all
-    lines before returning, rather than processing line-by-line.
+    For complex features, users can write structured requirements in a file
+    and provide the path. The file content will be read and returned.
+
+    File input methods:
+    - @/path/to/file.md  - Explicit file prefix
+    - /absolute/path.md  - Auto-detected absolute path
+    - ./relative/path.md - Auto-detected relative path
+    - ~/home/path.md     - Auto-detected home path
 
     Args:
         prompt: The prompt to display
 
     Returns:
-        All input lines joined together
+        User input text or file contents
     """
-    if prompt:
-        print(prompt, end='', flush=True)
-
-    lines: List[str] = []
-
-    # Read the first line (blocks until user types/pastes something)
     try:
-        first_line = sys.stdin.readline()
-        if not first_line:  # EOF
-            return ""
-        lines.append(first_line.rstrip('\n'))
+        user_input = input(prompt)
     except (EOFError, KeyboardInterrupt):
         return ""
 
-    # Check if more input is immediately available (from paste)
-    # Use a small timeout to catch rapid multi-line pastes
-    while True:
-        # select() checks if stdin has more data ready
-        readable, _, _ = select.select([sys.stdin], [], [], 0.05)
-        if readable:
-            line = sys.stdin.readline()
-            if line:
-                lines.append(line.rstrip('\n'))
-            else:
-                break
-        else:
-            # No more input pending
-            break
+    # Check if input is a file reference
+    file_path = None
 
-    return '\n'.join(lines)
+    if user_input.startswith('@'):
+        # Explicit file reference: @/path/to/file
+        file_path = user_input[1:].strip()
+    elif user_input.startswith(('/', './', '../', '~/')):
+        # Potential file path - check if it exists
+        expanded = os.path.expanduser(user_input.strip())
+        if os.path.isfile(expanded):
+            file_path = expanded
+
+    if file_path:
+        expanded_path = os.path.expanduser(file_path)
+        try:
+            with open(expanded_path, 'r') as f:
+                content = f.read()
+            print(f"[Loaded {len(content)} chars from {file_path}]")
+            return content
+        except FileNotFoundError:
+            print(f"[File not found: {file_path}]")
+            return ""
+        except PermissionError:
+            print(f"[Permission denied: {file_path}]")
+            return ""
+        except Exception as e:
+            print(f"[Error reading file: {e}]")
+            return ""
+
+    return user_input
 
 
 class TDDOrchestrator:
@@ -84,7 +94,8 @@ class TDDOrchestrator:
     Context is passed between phases via summaries.
     """
 
-    PHASE_COMPLETE_SIGNAL = "PHASE_COMPLETE"
+    # Signals must be on their own line to avoid false positives
+    PHASE_COMPLETE_SIGNAL = "---PHASE_COMPLETE---"
     SUMMARY_VERIFIED_SIGNAL = "SUMMARY_VERIFIED"
     GAPS_FOUND_SIGNAL = "GAPS_FOUND"
 
@@ -186,23 +197,26 @@ class TDDOrchestrator:
         self.markers.set_phase(phase)
 
         context = self._build_phase_context(phase, initial_task)
-        await self._run_phase_session(context, phase)
+        session_id = await self._run_phase_session(context, phase)
 
         if phase < 4:
-            summary = await self._generate_and_verify_summary(phase)
+            summary = await self._generate_and_verify_summary(phase, session_id)
             self._save_phase_summary(phase, summary)
             print(f"\n[Supervisor] {self.PHASE_NAMES[phase]} summary saved.")
         else:
             print(f"\n[Supervisor] Implementation complete - all tests passing!")
             self.markers.cleanup()
 
-    async def _run_phase_session(self, initial_context: str, phase: int) -> None:
+    async def _run_phase_session(self, initial_context: str, phase: int) -> Optional[str]:
         """
         Run an interactive Claude session for a phase.
 
         Args:
             initial_context: Initial context/prompt for the phase
             phase: Current phase number
+
+        Returns:
+            Session ID for resuming conversation (e.g., for summary generation)
         """
         env_vars = self.markers.get_env_vars()
 
@@ -211,6 +225,7 @@ class TDDOrchestrator:
 
         session_id = None
         phase_complete = False
+        working_indicator_shown = False
 
         # Initial query with context
         async for message in query(
@@ -218,24 +233,37 @@ class TDDOrchestrator:
             options=ClaudeAgentOptions(
                 cwd=str(self.working_dir),
                 env=env_vars,
+                permission_mode="bypassPermissions",
             )
         ):
             # Capture session ID
             if hasattr(message, 'session_id') and message.session_id:
                 session_id = message.session_id
 
-            # Print AssistantMessage content only (ResultMessage contains duplicate)
+            # Print AssistantMessage content (text and tool usage)
             if isinstance(message, AssistantMessage) and message.content:
                 for block in message.content:
                     if hasattr(block, 'text'):
+                        if working_indicator_shown:
+                            print("\n", end='')  # New line after dots
+                            working_indicator_shown = False
                         print(block.text, end='', flush=True)
                         if self.PHASE_COMPLETE_SIGNAL in block.text:
                             phase_complete = True
+                    elif hasattr(block, 'name'):
+                        # Tool use - show dot as progress indicator
+                        print(".", end='', flush=True)
+                        working_indicator_shown = True
 
         # If phase not complete, continue interactive loop
+        first_input = True
         while not phase_complete:
-            # Get user input (supports multi-line paste)
-            user_input = read_multiline_input("\nYou: ").strip()
+            # Show hint on first input prompt
+            if first_input:
+                print("\n[Tip: For structured input, provide a file path: @/path/to/file.md]")
+                first_input = False
+
+            user_input = read_user_input("\nYou: ").strip()
 
             if not user_input:
                 continue
@@ -249,25 +277,36 @@ class TDDOrchestrator:
                 raise KeyboardInterrupt("User requested abort")
 
             # Continue conversation
+            print("\n", end='', flush=True)
+            working_indicator_shown = False
             async for message in query(
                 prompt=user_input,
                 options=ClaudeAgentOptions(
                     cwd=str(self.working_dir),
                     env=env_vars,
                     resume=session_id,
+                    permission_mode="bypassPermissions",
                 )
             ):
-                # Print AssistantMessage content only (ResultMessage contains duplicate)
+                # Print AssistantMessage content (text and tool usage)
                 if isinstance(message, AssistantMessage) and message.content:
                     for block in message.content:
                         if hasattr(block, 'text'):
+                            if working_indicator_shown:
+                                print("\n", end='')  # New line after progress dots
+                                working_indicator_shown = False
                             print(block.text, end='', flush=True)
                             if self.PHASE_COMPLETE_SIGNAL in block.text:
                                 phase_complete = True
+                        elif hasattr(block, 'name'):
+                            # Tool use - show dot as progress indicator
+                            print(".", end='', flush=True)
 
         # Ask for user confirmation before proceeding
         if phase < 4:
             await self._confirm_phase_completion(phase)
+
+        return session_id
 
     async def _confirm_phase_completion(self, phase: int) -> None:
         """Ask user to confirm phase completion."""
@@ -282,7 +321,7 @@ class TDDOrchestrator:
             else:
                 print("Press 'y' or Enter to continue, or Ctrl+C to abort.")
 
-    async def _generate_and_verify_summary(self, phase: int) -> str:
+    async def _generate_and_verify_summary(self, phase: int, session_id: Optional[str] = None) -> str:
         """
         Generate a summary for the phase with self-review verification.
 
@@ -292,6 +331,7 @@ class TDDOrchestrator:
 
         Args:
             phase: Phase number to summarize
+            session_id: Session ID to resume (uses same context as phase session)
 
         Returns:
             Verified summary text
@@ -303,7 +343,7 @@ class TDDOrchestrator:
 
         print(f"\n[Supervisor] Generating phase {phase} summary...")
 
-        initial_summary = await self._query_for_text(summary_prompt)
+        initial_summary = await self._query_for_text(summary_prompt, session_id=session_id)
 
         # Step 2: Self-review
         review_prompt = ContextBuilder.get_review_prompt(phase)
@@ -312,7 +352,7 @@ class TDDOrchestrator:
 
         print(f"[Supervisor] Verifying summary completeness...")
 
-        review_response = await self._query_for_text(review_prompt)
+        review_response = await self._query_for_text(review_prompt, session_id=session_id)
 
         # Parse review response
         if review_response.startswith(self.GAPS_FOUND_SIGNAL):
@@ -339,13 +379,19 @@ class TDDOrchestrator:
             print(f"[Supervisor] Summary captured.")
             return review_response if review_response else initial_summary
 
-    async def _query_for_text(self, prompt: str, timeout: float = 300.0) -> str:
+    async def _query_for_text(
+        self,
+        prompt: str,
+        timeout: float = 300.0,
+        session_id: Optional[str] = None
+    ) -> str:
         """
         Send a query and collect the text response.
 
         Args:
             prompt: The prompt to send
             timeout: Maximum time to wait in seconds (default 5 minutes)
+            session_id: Optional session ID to resume conversation
 
         Returns:
             Collected text response
@@ -359,6 +405,8 @@ class TDDOrchestrator:
                 options=ClaudeAgentOptions(
                     cwd=str(self.working_dir),
                     env=env_vars,
+                    resume=session_id,
+                    permission_mode="bypassPermissions",
                 )
             ):
                 if isinstance(message, AssistantMessage) and message.content:
