@@ -205,13 +205,10 @@ run_phase_guard() {
     create_marker "tdd-requirements-confirmed"
     create_marker "tdd-interfaces-designed"
 
-    # Simulate reset by removing markers
-    rm -f "$TEST_MARKERS_DIR/tdd-mode"
-    rm -f "$TEST_MARKERS_DIR/tdd-phase"
-    rm -f "$TEST_MARKERS_DIR/tdd-requirements-confirmed"
-    rm -f "$TEST_MARKERS_DIR/tdd-interfaces-designed"
+    # Simulate reset by removing state.json
+    rm -f "$TEST_MARKERS_DIR/state.json"
 
-    # Orchestrator should do nothing now
+    # Orchestrator should do nothing now (TDD not active)
     local stop_input=$(generate_stop_hook_input "$PROJECT_DIR")
     run run_orchestrator "$stop_input"
     [ "$status" -eq 0 ]
@@ -254,13 +251,13 @@ run_phase_guard() {
 
 @test "recovers from missing phase file" {
     create_marker "tdd-mode"
-    # Don't create phase file
+    # State exists but phase will be initialized by orchestrator
 
     local stop_input=$(generate_stop_hook_input "$PROJECT_DIR")
     run run_orchestrator "$stop_input"
 
-    # Should initialize to phase 1 (session-scoped)
-    [ -f "$TEST_MARKERS_DIR/tdd-phase" ]
+    # Should be at phase 1 (from state.json)
+    [ "$(get_phase)" = "1" ]
     assert_decision_block
     assert_output_contains "Phase 1"
 }

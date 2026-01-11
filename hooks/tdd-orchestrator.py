@@ -89,11 +89,11 @@ def main():
 
     # Initialize phase if not set
     current_phase = markers.get_phase()
-    if not markers.tdd_phase.exists():
+    if not markers.phase_exists():
         markers.set_phase(1)
         current_phase = 1
-        # Clear any stale tests_passing from previous TDD round
-        markers.remove_marker(markers.tests_passing)
+        # Clear any stale implementation complete from previous TDD round
+        markers.mark_implementation_incomplete()
 
     # Change to project directory
     if not hook.cwd or not os.path.isdir(hook.cwd):
@@ -114,7 +114,7 @@ def main():
 
     # Phase 1: Requirements
     if current_phase == 1:
-        if markers.requirements_confirmed.exists():
+        if markers.is_requirements_complete():
             markers.set_phase(2)
             current_phase = 2
             logger.log_tdd("Phase 1 -> 2: Requirements confirmed, advancing to Interfaces")
@@ -137,8 +137,8 @@ def main():
                 block_response(reason, phase_agents)
                 return
 
-        # Code compiles, check for marker
-        if markers.interfaces_designed.exists():
+        # Code compiles, check for completion
+        if markers.is_interfaces_complete():
             markers.set_phase(3)
             current_phase = 3
             logger.log_tdd("Phase 2 -> 3: Interfaces approved, advancing to Tests")
@@ -162,7 +162,7 @@ def main():
                 block_response(reason, phase_agents)
                 return
 
-        if markers.tests_approved.exists():
+        if markers.is_tests_complete():
             markers.set_phase(4)
             current_phase = 4
             logger.log_tdd("Phase 3 -> 4: Tests approved, advancing to Implementation")
@@ -198,11 +198,11 @@ def main():
         logger.log_tdd("Phase 4 COMPLETE: All tests passing - TDD workflow finished")
         print(">>> TDD: Phase 4 complete! All tests passing.", file=sys.stderr)
 
-        # Create passing marker
-        markers.create_marker(markers.tests_passing)
+        # Mark implementation complete
+        markers.mark_implementation_complete()
 
-        # Clean up TDD markers
-        markers.cleanup_all_markers()
+        # Clean up TDD workflow state
+        markers.cleanup_workflow_state()
         return
 
     # Unknown phase, reset to 1

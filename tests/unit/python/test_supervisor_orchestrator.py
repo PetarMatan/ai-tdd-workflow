@@ -16,12 +16,21 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
 
 # Mock claude_agent_sdk before importing orchestrator
+# Define mock classes as real classes (not MagicMock instances) for isinstance() checks
+class MockAssistantMessage:
+    """Mock AssistantMessage class for isinstance() checks."""
+    pass
+
+class MockResultMessage:
+    """Mock ResultMessage class for isinstance() checks."""
+    pass
+
 mock_sdk = MagicMock()
 mock_sdk.query = MagicMock()
 mock_sdk.ClaudeAgentOptions = MagicMock()
 mock_types = MagicMock()
-mock_types.AssistantMessage = MagicMock()
-mock_types.ResultMessage = MagicMock()
+mock_types.AssistantMessage = MockAssistantMessage
+mock_types.ResultMessage = MockResultMessage
 mock_sdk.types = mock_types
 sys.modules['claude_agent_sdk'] = mock_sdk
 sys.modules['claude_agent_sdk.types'] = mock_types
@@ -278,8 +287,12 @@ class TestRunPhase:
                     async def mock_generate_and_verify(*args, **kwargs):
                         return "# Summary"
 
+                    async def mock_confirm(*args, **kwargs):
+                        return 'proceed'
+
                     orchestrator._run_phase_session = mock_run_session
                     orchestrator._generate_and_verify_summary = mock_generate_and_verify
+                    orchestrator._confirm_phase_completion = mock_confirm
 
                     run_async(orchestrator._run_phase(phase, "test task" if phase == 1 else None))
 
@@ -297,8 +310,12 @@ class TestRunPhase:
                 async def mock_generate_and_verify(*args, **kwargs):
                     return "# Requirements\n- Feature A"
 
+                async def mock_confirm(*args, **kwargs):
+                    return 'proceed'
+
                 orchestrator._run_phase_session = mock_run_session
                 orchestrator._generate_and_verify_summary = mock_generate_and_verify
+                orchestrator._confirm_phase_completion = mock_confirm
 
                 run_async(orchestrator._run_phase(1, "test"))
 
@@ -318,8 +335,12 @@ class TestRunPhase:
                 async def mock_generate_and_verify(*args, **kwargs):
                     return "# Interfaces\n- ServiceA"
 
+                async def mock_confirm(*args, **kwargs):
+                    return 'proceed'
+
                 orchestrator._run_phase_session = mock_run_session
                 orchestrator._generate_and_verify_summary = mock_generate_and_verify
+                orchestrator._confirm_phase_completion = mock_confirm
 
                 run_async(orchestrator._run_phase(2))
 
@@ -340,15 +361,20 @@ class TestRunPhase:
                 async def mock_generate_and_verify(*args, **kwargs):
                     return "# Tests\n- test_feature"
 
+                async def mock_confirm(*args, **kwargs):
+                    return 'proceed'
+
                 orchestrator._run_phase_session = mock_run_session
                 orchestrator._generate_and_verify_summary = mock_generate_and_verify
+                orchestrator._confirm_phase_completion = mock_confirm
 
                 run_async(orchestrator._run_phase(3))
 
                 saved = orchestrator.markers.get_tests_list()
                 assert "# Tests" in saved
 
-    def test_run_phase4_cleans_up_markers(self):
+    def test_run_phase4_keeps_documents_removes_state(self):
+        """Test that phase 4 removes state.json but keeps document files."""
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.object(Path, 'home', return_value=Path(tmpdir)):
                 from tdd_supervisor.orchestrator import TDDOrchestrator
@@ -365,8 +391,129 @@ class TestRunPhase:
 
                 run_async(orchestrator._run_phase(4))
 
-                # Markers should be cleaned up after phase 4
-                assert not orchestrator.markers.markers_dir.exists()
+                # Directory should still exist (documents preserved)
+                assert orchestrator.markers.markers_dir.exists()
+                # But state.json should be removed
+                state_file = orchestrator.markers.markers_dir / "state.json"
+                assert not state_file.exists()
+                # Document files should still exist
+                assert (orchestrator.markers.markers_dir / "phase1-requirements.md").exists()
+                assert (orchestrator.markers.markers_dir / "phase2-interfaces.md").exists()
+                assert (orchestrator.markers.markers_dir / "phase3-tests.md").exists()
+
+    def test_run_phase_edit_reloads_document(self):
+        """Test that 'edit' action re-reads the document file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                from tdd_supervisor.orchestrator import TDDOrchestrator
+                orchestrator = TDDOrchestrator(working_dir=tmpdir)
+
+                async def mock_run_session(*args, **kwargs):
+                    pass
+
+                async def mock_generate_and_verify(*args, **kwargs):
+                    return "# Original Requirements"
+
+                # First call returns 'edit', second returns 'proceed'
+                confirm_calls = []
+                async def mock_confirm(phase, doc_path="", session_id=None):
+                    confirm_calls.append(phase)
+                    if len(confirm_calls) == 1:
+                        # Simulate user editing the file
+                        orchestrator.markers.save_phase_document(phase, "# Edited Requirements")
+                        return 'edit'
+                    return 'proceed'
+
+                orchestrator._run_phase_session = mock_run_session
+                orchestrator._generate_and_verify_summary = mock_generate_and_verify
+                orchestrator._confirm_phase_completion = mock_confirm
+
+                run_async(orchestrator._run_phase(1, "test"))
+
+                # Verify the edited content was saved to markers
+                saved = orchestrator.markers.get_requirements_summary()
+                assert "# Edited Requirements" in saved
+
+    def test_run_phase_regenerate_calls_regenerate_summary(self):
+        """Test that 'regenerate' action calls _regenerate_summary."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                from tdd_supervisor.orchestrator import TDDOrchestrator
+                orchestrator = TDDOrchestrator(working_dir=tmpdir)
+
+                async def mock_run_session(*args, **kwargs):
+                    pass
+
+                async def mock_generate_and_verify(*args, **kwargs):
+                    return "# Original Requirements"
+
+                regenerate_called = []
+                async def mock_regenerate(phase, session_id=None):
+                    regenerate_called.append(phase)
+                    return "# Regenerated Requirements"
+
+                # First call returns 'regenerate', second returns 'proceed'
+                confirm_calls = []
+                async def mock_confirm(phase, doc_path="", session_id=None):
+                    confirm_calls.append(phase)
+                    if len(confirm_calls) == 1:
+                        return 'regenerate'
+                    return 'proceed'
+
+                orchestrator._run_phase_session = mock_run_session
+                orchestrator._generate_and_verify_summary = mock_generate_and_verify
+                orchestrator._confirm_phase_completion = mock_confirm
+                orchestrator._regenerate_summary = mock_regenerate
+
+                run_async(orchestrator._run_phase(1, "test"))
+
+                # Verify regenerate was called
+                assert 1 in regenerate_called
+                # Verify the regenerated content was saved
+                saved = orchestrator.markers.get_requirements_summary()
+                assert "# Regenerated Requirements" in saved
+
+
+class TestRegenerateSummary:
+    """Tests for _regenerate_summary method."""
+
+    def test_regenerate_summary_returns_current_on_empty_feedback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                from tdd_supervisor.orchestrator import TDDOrchestrator
+                orchestrator = TDDOrchestrator(working_dir=tmpdir)
+
+                # Save initial document
+                orchestrator.markers.save_phase_document(1, "# Current Summary")
+
+                with patch('builtins.input', return_value=''):
+                    result = run_async(orchestrator._regenerate_summary(1))
+
+                assert result == "# Current Summary"
+
+    def test_regenerate_summary_calls_query_with_feedback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                from tdd_supervisor.orchestrator import TDDOrchestrator
+                orchestrator = TDDOrchestrator(working_dir=tmpdir)
+
+                # Save initial document
+                orchestrator.markers.save_phase_document(1, "# Current Summary")
+
+                captured_prompt = []
+                async def mock_query_for_text(prompt, session_id=None, phase=None):
+                    captured_prompt.append(prompt)
+                    return "# Updated Summary"
+
+                orchestrator._query_for_text = mock_query_for_text
+
+                with patch('builtins.input', return_value='Add error handling section'):
+                    result = run_async(orchestrator._regenerate_summary(1))
+
+                assert result == "# Updated Summary"
+                assert len(captured_prompt) == 1
+                assert "Add error handling section" in captured_prompt[0]
+                assert "# Current Summary" in captured_prompt[0]
 
 
 class TestGenerateAndVerifySummary:
@@ -390,7 +537,7 @@ class TestGenerateAndVerifySummary:
 
                 call_count = 0
 
-                async def mock_query_for_text(prompt, session_id=None):
+                async def mock_query_for_text(prompt, session_id=None, phase=None):
                     nonlocal call_count
                     call_count += 1
                     if call_count == 1:
@@ -413,7 +560,7 @@ class TestGenerateAndVerifySummary:
 
                 call_count = 0
 
-                async def mock_query_for_text(prompt, session_id=None):
+                async def mock_query_for_text(prompt, session_id=None, phase=None):
                     nonlocal call_count
                     call_count += 1
                     if call_count == 1:
@@ -435,7 +582,7 @@ class TestGenerateAndVerifySummary:
 
                 call_count = 0
 
-                async def mock_query_for_text(prompt, session_id=None):
+                async def mock_query_for_text(prompt, session_id=None, phase=None):
                     nonlocal call_count
                     call_count += 1
                     if call_count == 1:
@@ -457,7 +604,7 @@ class TestGenerateAndVerifySummary:
 
                 call_count = 0
 
-                async def mock_query_for_text(prompt, session_id=None):
+                async def mock_query_for_text(prompt, session_id=None, phase=None):
                     nonlocal call_count
                     call_count += 1
                     if call_count == 1:
@@ -516,8 +663,8 @@ class TestConfirmPhaseCompletion:
                 orchestrator = TDDOrchestrator(working_dir=tmpdir)
 
                 with patch('builtins.input', return_value='y'):
-                    # Should not raise
-                    run_async(orchestrator._confirm_phase_completion(1))
+                    result = run_async(orchestrator._confirm_phase_completion(1))
+                    assert result == 'proceed'
 
     def test_confirm_phase_completion_accepts_yes(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -526,7 +673,8 @@ class TestConfirmPhaseCompletion:
                 orchestrator = TDDOrchestrator(working_dir=tmpdir)
 
                 with patch('builtins.input', return_value='yes'):
-                    run_async(orchestrator._confirm_phase_completion(1))
+                    result = run_async(orchestrator._confirm_phase_completion(1))
+                    assert result == 'proceed'
 
     def test_confirm_phase_completion_accepts_empty(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -535,8 +683,8 @@ class TestConfirmPhaseCompletion:
                 orchestrator = TDDOrchestrator(working_dir=tmpdir)
 
                 with patch('builtins.input', return_value=''):
-                    # Empty string should be accepted (same as pressing Enter)
-                    run_async(orchestrator._confirm_phase_completion(1))
+                    result = run_async(orchestrator._confirm_phase_completion(1))
+                    assert result == 'proceed'
 
     def test_confirm_phase_completion_retries_on_invalid(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -547,7 +695,30 @@ class TestConfirmPhaseCompletion:
                 # First invalid, then valid
                 inputs = iter(['invalid', 'y'])
                 with patch('builtins.input', lambda _: next(inputs)):
-                    run_async(orchestrator._confirm_phase_completion(1))
+                    result = run_async(orchestrator._confirm_phase_completion(1))
+                    assert result == 'proceed'
+
+    def test_confirm_phase_completion_edit_option(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                from tdd_supervisor.orchestrator import TDDOrchestrator
+                orchestrator = TDDOrchestrator(working_dir=tmpdir)
+
+                # 'e' then Enter to confirm done editing
+                inputs = iter(['e', ''])
+                with patch('builtins.input', lambda _: next(inputs)):
+                    result = run_async(orchestrator._confirm_phase_completion(1, "/path/to/doc.md"))
+                    assert result == 'edit'
+
+    def test_confirm_phase_completion_regenerate_option(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                from tdd_supervisor.orchestrator import TDDOrchestrator
+                orchestrator = TDDOrchestrator(working_dir=tmpdir)
+
+                with patch('builtins.input', return_value='r'):
+                    result = run_async(orchestrator._confirm_phase_completion(1))
+                    assert result == 'regenerate'
 
 
 class TestContextPassing:
@@ -569,8 +740,12 @@ class TestContextPassing:
                 async def mock_generate_and_verify(*args, **kwargs):
                     return "# Interfaces"
 
+                async def mock_confirm(*args, **kwargs):
+                    return 'proceed'
+
                 orchestrator._run_phase_session = capture_context
                 orchestrator._generate_and_verify_summary = mock_generate_and_verify
+                orchestrator._confirm_phase_completion = mock_confirm
 
                 run_async(orchestrator._run_phase(2))
 
@@ -593,8 +768,12 @@ class TestContextPassing:
                 async def mock_generate_and_verify(*args, **kwargs):
                     return "# Tests"
 
+                async def mock_confirm(*args, **kwargs):
+                    return 'proceed'
+
                 orchestrator._run_phase_session = capture_context
                 orchestrator._generate_and_verify_summary = mock_generate_and_verify
+                orchestrator._confirm_phase_completion = mock_confirm
 
                 run_async(orchestrator._run_phase(3))
 
@@ -725,11 +904,12 @@ class TestSupervisorEndToEnd:
 
                 # Mock user confirmations (always say 'y' to proceed)
                 with patch('builtins.input', return_value='y'):
-                    # Patch the query function and AssistantMessage class
+                    # Patch the query function and message classes
                     with patch('tdd_supervisor.orchestrator.query', mock_query):
                         with patch('tdd_supervisor.orchestrator.AssistantMessage', MockMessageClass):
-                            # Run the complete workflow
-                            run_async(orchestrator.run(initial_task="Build a test feature"))
+                            with patch('tdd_supervisor.orchestrator.ResultMessage', MockResultMessage):
+                                # Run the complete workflow
+                                run_async(orchestrator.run(initial_task="Build a test feature"))
 
                 # Verify all 4 phases were executed
                 assert 1 in phases_executed, "Phase 1 should have executed"
@@ -741,9 +921,12 @@ class TestSupervisorEndToEnd:
                 phase_order = [p for p in phases_executed if p in [1, 2, 3, 4]]
                 assert phase_order == [1, 2, 3, 4], f"Phases should execute in order, got {phase_order}"
 
-                # Verify markers were cleaned up (phase 4 cleanup)
-                assert not orchestrator.markers.markers_dir.exists(), \
-                    "Markers should be cleaned up after successful completion"
+                # Verify state.json was cleaned up but documents preserved
+                assert orchestrator.markers.markers_dir.exists(), \
+                    "Documents directory should be preserved after successful completion"
+                state_file = orchestrator.markers.markers_dir / "state.json"
+                assert not state_file.exists(), \
+                    "state.json should be removed after successful completion"
 
     def test_workflow_saves_summaries_between_phases(self):
         """
@@ -754,48 +937,37 @@ class TestSupervisorEndToEnd:
                 from tdd_supervisor.orchestrator import TDDOrchestrator
 
                 phases_executed = []
-                saved_summaries = {}
+                saved_documents = {}
 
                 # Create orchestrator
                 orchestrator = TDDOrchestrator(working_dir=tmpdir)
 
-                # Capture summaries as they're saved
-                original_save_req = orchestrator.markers.save_requirements_summary
-                original_save_int = orchestrator.markers.save_interfaces_list
-                original_save_tests = orchestrator.markers.save_tests_list
+                # Capture documents as they're saved (orchestrator calls save_phase_document directly)
+                original_save_doc = orchestrator.markers.save_phase_document
 
-                def capture_req_summary(summary):
-                    saved_summaries['requirements'] = summary
-                    return original_save_req(summary)
+                def capture_document(phase, content):
+                    saved_documents[phase] = content
+                    return original_save_doc(phase, content)
 
-                def capture_int_summary(summary):
-                    saved_summaries['interfaces'] = summary
-                    return original_save_int(summary)
-
-                def capture_tests_summary(summary):
-                    saved_summaries['tests'] = summary
-                    return original_save_tests(summary)
-
-                orchestrator.markers.save_requirements_summary = capture_req_summary
-                orchestrator.markers.save_interfaces_list = capture_int_summary
-                orchestrator.markers.save_tests_list = capture_tests_summary
+                orchestrator.markers.save_phase_document = capture_document
 
                 mock_query, MockMessageClass = self._create_mock_query(phases_executed)
 
                 with patch('builtins.input', return_value='y'):
                     with patch('tdd_supervisor.orchestrator.query', mock_query):
                         with patch('tdd_supervisor.orchestrator.AssistantMessage', MockMessageClass):
-                            run_async(orchestrator.run(initial_task="Build a feature"))
+                            with patch('tdd_supervisor.orchestrator.ResultMessage', MockResultMessage):
+                                run_async(orchestrator.run(initial_task="Build a feature"))
 
-                # Verify summaries were saved for phases 1-3
-                assert 'requirements' in saved_summaries, "Requirements summary should be saved"
-                assert 'interfaces' in saved_summaries, "Interfaces summary should be saved"
-                assert 'tests' in saved_summaries, "Tests summary should be saved"
+                # Verify documents were saved for phases 1-3
+                assert 1 in saved_documents, "Phase 1 document should be saved"
+                assert 2 in saved_documents, "Phase 2 document should be saved"
+                assert 3 in saved_documents, "Phase 3 document should be saved"
 
-                # Verify summaries have content
-                assert len(saved_summaries['requirements']) > 0
-                assert len(saved_summaries['interfaces']) > 0
-                assert len(saved_summaries['tests']) > 0
+                # Verify documents have content
+                assert len(saved_documents[1]) > 0, "Phase 1 document should have content"
+                assert len(saved_documents[2]) > 0, "Phase 2 document should have content"
+                assert len(saved_documents[3]) > 0, "Phase 3 document should have content"
 
     def test_workflow_with_initial_task(self):
         """
@@ -844,7 +1016,8 @@ class TestSupervisorEndToEnd:
                 with patch('builtins.input', return_value='y'):
                     with patch('tdd_supervisor.orchestrator.query', capturing_mock_query):
                         with patch('tdd_supervisor.orchestrator.AssistantMessage', MockAssistantMessage):
-                            run_async(orchestrator.run(initial_task="Build a REST API for users"))
+                            with patch('tdd_supervisor.orchestrator.ResultMessage', MockResultMessage):
+                                run_async(orchestrator.run(initial_task="Build a REST API for users"))
 
                 # Verify initial task appears in phase 1 prompt
                 phase1_prompts = [p for p in captured_prompts if "Phase 1" in p]

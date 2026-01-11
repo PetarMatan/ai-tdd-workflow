@@ -376,10 +376,28 @@ Markers directory: {markers_dir}
 """
 
 
-def format_phase_complete_banner(phase: int, name: str) -> str:
-    """Format the phase completion banner."""
-    separator = '=' * 40
-    return f"\n{separator}\nPhase {phase} ({name}) appears complete.\n{separator}"
+def format_phase_complete_banner(phase: int, name: str, doc_path: str = "") -> str:
+    """Format the phase completion banner with review options."""
+    separator = '=' * 60
+    lines = [
+        f"\n{separator}",
+        f"  Phase {phase} ({name}) Complete",
+        separator,
+    ]
+
+    if doc_path:
+        lines.append("")
+        lines.append(f"Review: {doc_path}")
+        lines.append("        (You can open this file in your editor)")
+
+    lines.append("")
+    lines.append("Options:")
+    lines.append("  y - Proceed to next phase")
+    lines.append("  e - Edit document manually, then reload")
+    lines.append("  r - Provide feedback to regenerate")
+    lines.append("  Ctrl+C - Abort workflow")
+
+    return '\n'.join(lines)
 
 
 def format_workflow_complete() -> str:

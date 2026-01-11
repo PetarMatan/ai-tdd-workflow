@@ -22,6 +22,7 @@ except ImportError:
 
 from .markers import SupervisorMarkers
 from .context import ContextBuilder
+from .logger import SupervisorLogger
 from .templates import (
     format_phase_header,
     format_workflow_header,
@@ -115,6 +116,10 @@ class TDDOrchestrator:
         """
         self.working_dir = Path(working_dir or os.getcwd()).resolve()
         self.markers = SupervisorMarkers()
+        self.logger = SupervisorLogger(
+            workflow_dir=self.markers.markers_dir,
+            workflow_id=self.markers.workflow_id
+        )
 
         # Validate working directory
         if not self.working_dir.is_dir():
@@ -134,8 +139,9 @@ class TDDOrchestrator:
         ))
 
         try:
-            # Initialize markers
+            # Initialize markers and log start
             self.markers.initialize()
+            self.logger.log_workflow_start(initial_task or "")
 
             # Run all 4 TDD phases
             await self._run_phase(1, initial_task)
@@ -143,14 +149,25 @@ class TDDOrchestrator:
             await self._run_phase(3)
             await self._run_phase(4)
 
+            # Log completion with usage summary
+            self.logger.log_workflow_complete(self.markers.get_usage_summary_text())
+            self.logger.log_usage_summary(
+                total_tokens=self.markers.get_total_tokens(),
+                total_cost=self.markers.get_total_cost(),
+                duration_sec=self.markers.get_total_duration_sec()
+            )
+
             print(format_workflow_complete())
 
         except KeyboardInterrupt:
             print("\n\nWorkflow interrupted by user.")
+            self.logger.log_workflow_aborted("User interrupted")
             self.markers.cleanup()
             print("Markers cleaned up.")
         except Exception as e:
             print(f"\n\nWorkflow error: {e}", file=sys.stderr)
+            self.logger.log_error("Workflow failed", e)
+            self.logger.log_workflow_aborted(str(e))
             self.markers.cleanup()
             raise
 
@@ -176,15 +193,6 @@ class TDDOrchestrator:
         else:
             raise ValueError(f"Invalid phase: {phase}")
 
-    def _save_phase_summary(self, phase: int, summary: str) -> None:
-        """Save summary for a specific phase."""
-        if phase == 1:
-            self.markers.save_requirements_summary(summary)
-        elif phase == 2:
-            self.markers.save_interfaces_list(summary)
-        elif phase == 3:
-            self.markers.save_tests_list(summary)
-
     async def _run_phase(self, phase: int, initial_task: Optional[str] = None) -> None:
         """
         Run a single TDD phase.
@@ -193,19 +201,64 @@ class TDDOrchestrator:
             phase: Phase number (1-4)
             initial_task: Initial task description (phase 1 only)
         """
-        print(format_phase_header(phase, self.PHASE_NAMES[phase]))
+        phase_name = self.PHASE_NAMES[phase]
+        print(format_phase_header(phase, phase_name))
         self.markers.set_phase(phase)
+        self.logger.log_phase_start(phase, phase_name)
 
+        # Build and save context
         context = self._build_phase_context(phase, initial_task)
+        context_path = self.markers.save_phase_context(phase, context)
+        if context_path:
+            self.logger.log_phase_context_saved(phase, context_path)
+
+        # Run the phase session
         session_id = await self._run_phase_session(context, phase)
 
         if phase < 4:
+            # Generate summary and save as document
             summary = await self._generate_and_verify_summary(phase, session_id)
-            self._save_phase_summary(phase, summary)
-            print(f"\n[Supervisor] {self.PHASE_NAMES[phase]} summary saved.")
+            doc_path = self.markers.save_phase_document(phase, summary)
+            if doc_path:
+                self.logger.log_phase_summary_saved(phase, doc_path)
+                print(f"\n[Supervisor] {phase_name} document saved: {doc_path}")
+
+            # Confirmation loop with edit/regenerate options
+            while True:
+                action = await self._confirm_phase_completion(phase, doc_path, session_id)
+
+                if action == 'proceed':
+                    break
+                elif action == 'edit':
+                    # Verify the edited document can be read
+                    edited_content = self.markers.get_phase_document(phase)
+                    if edited_content:
+                        # Show preview of edited content
+                        preview_lines = edited_content.strip().split('\n')[:5]
+                        preview = '\n'.join(preview_lines)
+                        if len(edited_content.strip().split('\n')) > 5:
+                            preview += '\n...'
+                        print(f"\n[Supervisor] Document updated. Preview:")
+                        print(f"---")
+                        print(preview)
+                        print(f"---")
+                        self.logger.log_event("USER", f"Phase {phase} document edited manually")
+                    else:
+                        print(f"[Supervisor] Warning: Could not read document at {doc_path}")
+                elif action == 'regenerate':
+                    # Regenerate summary with user feedback
+                    summary = await self._regenerate_summary(phase, session_id)
+                    doc_path = self.markers.save_phase_document(phase, summary)
+                    if doc_path:
+                        self.logger.log_phase_summary_saved(phase, doc_path)
+                        print(f"[Supervisor] Updated document saved: {doc_path}")
         else:
             print(f"\n[Supervisor] Implementation complete - all tests passing!")
-            self.markers.cleanup()
+            self.logger.log_phase_complete(phase, phase_name)
+            self._display_usage_summary()
+            # Keep documents for reference, only remove state.json
+            self.markers.cleanup(keep_documents=True)
+            print(f"\n[Supervisor] Documents preserved in: {self.markers.get_marker_dir()}")
 
     async def _run_phase_session(self, initial_context: str, phase: int) -> Optional[str]:
         """
@@ -255,6 +308,10 @@ class TDDOrchestrator:
                         print(".", end='', flush=True)
                         working_indicator_shown = True
 
+            # Capture usage from ResultMessage
+            if isinstance(message, ResultMessage):
+                self._record_usage(phase, message)
+
         # If phase not complete, continue interactive loop
         first_input = True
         while not phase_complete:
@@ -268,12 +325,17 @@ class TDDOrchestrator:
             if not user_input:
                 continue
 
+            # Log user input
+            self.logger.log_user_input(user_input)
+
             # Check for user commands
             if user_input.lower() in ['/done', '/complete', '/next']:
+                self.logger.log_user_command(user_input.lower())
                 phase_complete = True
                 break
 
             if user_input.lower() in ['/quit', '/exit', '/abort']:
+                self.logger.log_user_command(user_input.lower())
                 raise KeyboardInterrupt("User requested abort")
 
             # Continue conversation
@@ -302,24 +364,120 @@ class TDDOrchestrator:
                             # Tool use - show dot as progress indicator
                             print(".", end='', flush=True)
 
-        # Ask for user confirmation before proceeding
-        if phase < 4:
-            await self._confirm_phase_completion(phase)
+                # Capture usage from ResultMessage
+                if isinstance(message, ResultMessage):
+                    self._record_usage(phase, message)
 
         return session_id
 
-    async def _confirm_phase_completion(self, phase: int) -> None:
-        """Ask user to confirm phase completion."""
+    def _record_usage(self, phase: int, result: ResultMessage) -> None:
+        """
+        Record usage data from a ResultMessage.
+
+        Args:
+            phase: Phase number (1-4)
+            result: ResultMessage from query()
+        """
+        usage = result.usage or {}
+        input_tokens = usage.get("input_tokens", 0)
+        output_tokens = usage.get("output_tokens", 0)
+        cost_usd = result.total_cost_usd or 0.0
+        duration_ms = result.duration_ms or 0
+        turns = result.num_turns or 0
+
+        self.markers.add_phase_usage(
+            phase=phase,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost_usd,
+            duration_ms=duration_ms,
+            turns=turns
+        )
+
+    def _display_usage_summary(self) -> None:
+        """Display token usage summary at end of workflow."""
+        usage = self.markers.get_all_usage()
+
+        print("\n" + "=" * 60)
+        print("TOKEN USAGE SUMMARY")
+        print("=" * 60)
+
+        for phase_num in [1, 2, 3, 4]:
+            phase_key = f"phase{phase_num}"
+            phase_data = usage.get(phase_key, {})
+            phase_name = self.PHASE_NAMES.get(phase_num, f"Phase {phase_num}")
+
+            input_tokens = phase_data.get("input_tokens", 0)
+            output_tokens = phase_data.get("output_tokens", 0)
+            total_tokens = input_tokens + output_tokens
+            cost = phase_data.get("cost_usd", 0.0)
+            duration = phase_data.get("duration_ms", 0)
+            turns = phase_data.get("turns", 0)
+
+            if total_tokens > 0:
+                duration_sec = duration / 1000.0
+                print(f"\nPhase {phase_num} ({phase_name}):")
+                print(f"  Tokens: {input_tokens:,} in / {output_tokens:,} out ({total_tokens:,} total)")
+                print(f"  Cost: ${cost:.4f}")
+                print(f"  Duration: {duration_sec:.1f}s | Turns: {turns}")
+
+        # Total
+        total = usage.get("total", {})
+        total_input = total.get("input_tokens", 0)
+        total_output = total.get("output_tokens", 0)
+        total_tokens = total_input + total_output
+        total_cost = total.get("cost_usd", 0.0)
+        total_duration = total.get("duration_ms", 0)
+        total_turns = total.get("turns", 0)
+
+        print("\n" + "-" * 60)
+        print("TOTAL:")
+        print(f"  Tokens: {total_input:,} in / {total_output:,} out ({total_tokens:,} total)")
+        print(f"  Cost: ${total_cost:.4f}")
+        print(f"  Duration: {total_duration / 1000.0:.1f}s | Turns: {total_turns}")
+        print("=" * 60)
+
+    async def _confirm_phase_completion(
+        self,
+        phase: int,
+        doc_path: str = "",
+        session_id: Optional[str] = None
+    ) -> str:
+        """
+        Ask user to confirm phase completion with edit/regenerate options.
+
+        Args:
+            phase: Phase number
+            doc_path: Path to the phase document
+            session_id: Session ID for regeneration queries
+
+        Returns:
+            Action to take: 'proceed', 'edit', or 'regenerate'
+        """
         name = self.PHASE_NAMES.get(phase, f"Phase {phase}")
 
-        print(format_phase_complete_banner(phase, name))
+        print(format_phase_complete_banner(phase, name, doc_path))
 
         while True:
-            response = input("\nProceed to next phase? [y to continue, Ctrl+C to abort]: ").strip().lower()
+            response = input("\nYour choice [y/e/r]: ").strip().lower()
+
             if response in ['y', 'yes', '']:
-                return
+                self.logger.log_user_confirmation(phase)
+                self.logger.log_phase_complete(phase, name)
+                return 'proceed'
+            elif response == 'e':
+                print(f"\n[Supervisor] Edit the document, then press Enter to continue...")
+                print(f"             File: {doc_path}")
+                input("\nPress Enter when done editing: ")
+                return 'edit'
+            elif response == 'r':
+                return 'regenerate'
             else:
-                print("Press 'y' or Enter to continue, or Ctrl+C to abort.")
+                print("\nOptions:")
+                print("  y - Proceed to next phase")
+                print("  e - Edit document manually, then reload")
+                print("  r - Provide feedback to regenerate")
+                print("  Ctrl+C - Abort workflow")
 
     async def _generate_and_verify_summary(self, phase: int, session_id: Optional[str] = None) -> str:
         """
@@ -343,7 +501,7 @@ class TDDOrchestrator:
 
         print(f"\n[Supervisor] Generating phase {phase} summary...")
 
-        initial_summary = await self._query_for_text(summary_prompt, session_id=session_id)
+        initial_summary = await self._query_for_text(summary_prompt, session_id=session_id, phase=phase)
 
         # Step 2: Self-review
         review_prompt = ContextBuilder.get_review_prompt(phase)
@@ -352,7 +510,7 @@ class TDDOrchestrator:
 
         print(f"[Supervisor] Verifying summary completeness...")
 
-        review_response = await self._query_for_text(review_prompt, session_id=session_id)
+        review_response = await self._query_for_text(review_prompt, session_id=session_id, phase=phase)
 
         # Parse review response
         if review_response.startswith(self.GAPS_FOUND_SIGNAL):
@@ -379,11 +537,71 @@ class TDDOrchestrator:
             print(f"[Supervisor] Summary captured.")
             return review_response if review_response else initial_summary
 
+    async def _regenerate_summary(
+        self,
+        phase: int,
+        session_id: Optional[str] = None
+    ) -> str:
+        """
+        Regenerate summary based on user feedback.
+
+        Args:
+            phase: Phase number
+            session_id: Session ID to resume (maintains conversation context)
+
+        Returns:
+            Regenerated summary text
+        """
+        # Get current summary for reference
+        current_summary = self.markers.get_phase_document(phase)
+
+        # Get user feedback
+        print("\n[Supervisor] What changes would you like to make?")
+        print("             (Describe what to add, remove, or modify)")
+        feedback = read_user_input("\nYour feedback: ").strip()
+
+        if not feedback:
+            print("[Supervisor] No feedback provided, keeping current summary.")
+            return current_summary
+
+        self.logger.log_user_input(f"Regenerate feedback: {feedback}")
+
+        # Build regeneration prompt
+        regenerate_prompt = f"""
+The user has reviewed the summary and wants changes.
+
+## Current Summary
+{current_summary}
+
+## User Feedback
+{feedback}
+
+## Your Task
+Update the summary based on the user's feedback. Keep the same format but incorporate
+their requested changes. Output ONLY the updated summary, no explanations.
+"""
+
+        print(f"\n[Supervisor] Regenerating summary with your feedback...")
+
+        new_summary = await self._query_for_text(
+            regenerate_prompt,
+            session_id=session_id,
+            phase=phase
+        )
+
+        if new_summary:
+            print(f"[Supervisor] Summary regenerated.")
+            return new_summary
+        else:
+            print(f"[Supervisor] Regeneration failed, keeping current summary.")
+            return current_summary
+
     async def _query_for_text(
         self,
         prompt: str,
         timeout: float = 300.0,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        phase: Optional[int] = None
     ) -> str:
         """
         Send a query and collect the text response.
@@ -392,6 +610,7 @@ class TDDOrchestrator:
             prompt: The prompt to send
             timeout: Maximum time to wait in seconds (default 5 minutes)
             session_id: Optional session ID to resume conversation
+            phase: Optional phase number for usage tracking
 
         Returns:
             Collected text response
@@ -413,6 +632,10 @@ class TDDOrchestrator:
                     for block in message.content:
                         if hasattr(block, 'text'):
                             text_parts.append(block.text)
+
+                # Capture usage from ResultMessage
+                if isinstance(message, ResultMessage) and phase:
+                    self._record_usage(phase, message)
 
         try:
             await asyncio.wait_for(collect_response(), timeout=timeout)

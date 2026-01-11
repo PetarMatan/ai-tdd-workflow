@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit tests for markers.py
+Unit tests for markers.py - MarkerManager class
 """
 
 import os
@@ -25,17 +25,17 @@ class TestMarkerManager:
                 assert manager.markers_dir.exists()
                 assert "tdd-test-session" in str(manager.markers_dir)
 
-    def test_is_tdd_active_false_when_no_marker(self):
+    def test_is_tdd_active_false_when_not_initialized(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.object(Path, 'home', return_value=Path(tmpdir)):
                 manager = MarkerManager("test-session")
                 assert manager.is_tdd_active() is False
 
-    def test_is_tdd_active_true_when_marker_exists(self):
+    def test_is_tdd_active_true_after_initialize(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.object(Path, 'home', return_value=Path(tmpdir)):
                 manager = MarkerManager("test-session")
-                manager.tdd_mode.touch()
+                manager._state.initialize()
                 assert manager.is_tdd_active() is True
 
     def test_get_phase_defaults_to_1(self):
@@ -44,87 +44,118 @@ class TestMarkerManager:
                 manager = MarkerManager("test-session")
                 assert manager.get_phase() == 1
 
-    def test_get_phase_reads_from_file(self):
+    def test_set_and_get_phase(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.object(Path, 'home', return_value=Path(tmpdir)):
                 manager = MarkerManager("test-session")
-                manager.tdd_phase.write_text("3")
+                manager.set_phase(3)
                 assert manager.get_phase() == 3
 
-    def test_get_phase_handles_invalid_content(self):
+    def test_phase_exists_false_when_not_initialized(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.object(Path, 'home', return_value=Path(tmpdir)):
                 manager = MarkerManager("test-session")
-                manager.tdd_phase.write_text("invalid")
-                assert manager.get_phase() == 1
+                assert manager.phase_exists() is False
 
-    def test_set_phase(self):
+    def test_phase_exists_true_after_initialize(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.object(Path, 'home', return_value=Path(tmpdir)):
                 manager = MarkerManager("test-session")
-                manager.set_phase(4)
-                assert manager.tdd_phase.read_text() == "4"
+                manager._state.initialize()
+                assert manager.phase_exists() is True
 
-    def test_marker_properties(self):
+
+class TestPhaseCompletion:
+    """Tests for phase completion methods."""
+
+    def test_requirements_complete_false_by_default(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.object(Path, 'home', return_value=Path(tmpdir)):
                 manager = MarkerManager("test-session")
+                assert manager.is_requirements_complete() is False
 
-                assert "tdd-mode" in str(manager.tdd_mode)
-                assert "tdd-phase" in str(manager.tdd_phase)
-                assert "tdd-requirements-confirmed" in str(manager.requirements_confirmed)
-                assert "tdd-interfaces-designed" in str(manager.interfaces_designed)
-                assert "tdd-tests-approved" in str(manager.tests_approved)
-                assert "tdd-tests-passing" in str(manager.tests_passing)
-
-    def test_create_and_remove_marker(self):
+    def test_mark_requirements_complete(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.object(Path, 'home', return_value=Path(tmpdir)):
                 manager = MarkerManager("test-session")
+                manager.mark_requirements_complete()
+                assert manager.is_requirements_complete() is True
 
-                # Create marker
-                manager.create_marker(manager.requirements_confirmed)
-                assert manager.requirements_confirmed.exists()
+    def test_mark_requirements_incomplete(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                manager = MarkerManager("test-session")
+                manager.mark_requirements_complete()
+                manager.mark_requirements_incomplete()
+                assert manager.is_requirements_complete() is False
 
-                # Remove marker
-                manager.remove_marker(manager.requirements_confirmed)
-                assert not manager.requirements_confirmed.exists()
+    def test_interfaces_complete_cycle(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                manager = MarkerManager("test-session")
+                assert manager.is_interfaces_complete() is False
+                manager.mark_interfaces_complete()
+                assert manager.is_interfaces_complete() is True
+                manager.mark_interfaces_incomplete()
+                assert manager.is_interfaces_complete() is False
+
+    def test_tests_complete_cycle(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                manager = MarkerManager("test-session")
+                assert manager.is_tests_complete() is False
+                manager.mark_tests_complete()
+                assert manager.is_tests_complete() is True
+                manager.mark_tests_incomplete()
+                assert manager.is_tests_complete() is False
+
+    def test_implementation_complete_cycle(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(Path, 'home', return_value=Path(tmpdir)):
+                manager = MarkerManager("test-session")
+                assert manager.is_implementation_complete() is False
+                manager.mark_implementation_complete()
+                assert manager.is_implementation_complete() is True
+                manager.mark_implementation_incomplete()
+                assert manager.is_implementation_complete() is False
+
+
+class TestCleanup:
+    """Tests for cleanup methods."""
 
     def test_cleanup_session(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.object(Path, 'home', return_value=Path(tmpdir)):
                 manager = MarkerManager("test-session")
-
-                # Create some markers
-                manager.tdd_mode.touch()
+                manager._state.initialize()
                 manager.set_phase(2)
-                manager.requirements_confirmed.touch()
+                manager.mark_requirements_complete()
 
-                # Cleanup
                 manager.cleanup_session()
 
-                # Directory should be gone
                 assert not manager.markers_dir.exists()
 
-    def test_cleanup_all_markers(self):
+    def test_cleanup_workflow_state(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.object(Path, 'home', return_value=Path(tmpdir)):
                 manager = MarkerManager("test-session")
-
-                # Create all markers
-                manager.tdd_mode.touch()
+                manager._state.initialize()
                 manager.set_phase(3)
-                manager.requirements_confirmed.touch()
-                manager.interfaces_designed.touch()
+                manager.mark_requirements_complete()
+                manager.mark_interfaces_complete()
+                manager.mark_implementation_complete()
 
-                # Cleanup markers (not directory)
-                manager.cleanup_all_markers()
+                manager.cleanup_workflow_state()
 
                 # Directory should still exist
                 assert manager.markers_dir.exists()
-                # But markers should be gone
-                assert not manager.tdd_mode.exists()
-                assert not manager.tdd_phase.exists()
+                # State should be reset
+                assert manager.is_tdd_active() is False
+                assert manager.get_phase() == 1
+                assert manager.is_requirements_complete() is False
+                assert manager.is_interfaces_complete() is False
+                # Implementation stays complete as success indicator
+                assert manager.is_implementation_complete() is True
 
     def test_get_marker_dir_display(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -141,7 +172,6 @@ class TestSupervisorMode:
         """Supervisor mode should be false when no env vars set."""
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.object(Path, 'home', return_value=Path(tmpdir)):
-                # Ensure env vars are not set
                 env = os.environ.copy()
                 env.pop("TDD_SUPERVISOR_ACTIVE", None)
                 env.pop("TDD_SUPERVISOR_MARKERS_DIR", None)
@@ -184,7 +214,6 @@ class TestSupervisorMode:
         """MarkerManager should use session-based directory when not in supervisor mode."""
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch.object(Path, 'home', return_value=Path(tmpdir)):
-                # Clear supervisor env vars
                 env = os.environ.copy()
                 env.pop("TDD_SUPERVISOR_MARKERS_DIR", None)
                 env.pop("TDD_SUPERVISOR_ACTIVE", None)

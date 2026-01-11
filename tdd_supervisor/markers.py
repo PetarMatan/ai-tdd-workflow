@@ -2,19 +2,28 @@
 """
 TDD Supervisor - Marker Management
 
-Manages TDD markers for supervisor mode. Uses a workflow ID that persists
+Thin wrapper around TDDState for supervisor mode. Uses a workflow ID that persists
 across multiple Claude sessions within a single TDD workflow run.
 """
 
-import os
-import shutil
+import sys
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
+
+# Add hooks/lib to path for TDDState import
+hooks_lib = Path(__file__).parent.parent / "hooks" / "lib"
+sys.path.insert(0, str(hooks_lib))
+
+from tdd_state import TDDState
 
 
 class SupervisorMarkers:
-    """Manages TDD markers for supervisor-controlled workflows."""
+    """
+    Manages TDD state for supervisor-controlled workflows.
+
+    This is a thin wrapper around TDDState that provides
+    the interface expected by the supervisor orchestrator.
+    """
 
     def __init__(self, workflow_id: Optional[str] = None):
         """
@@ -24,132 +33,234 @@ class SupervisorMarkers:
             workflow_id: Unique identifier for this workflow run.
                         If not provided, generates one from timestamp.
         """
-        self.base_dir = Path.home() / ".claude" / "tmp"
-        self.workflow_id = workflow_id or self._generate_workflow_id()
-        self.markers_dir = self.base_dir / f"tdd-supervisor-{self.workflow_id}"
+        self._state = TDDState(workflow_id=workflow_id, mode="supervisor")
 
-        # Ensure directory exists
-        self.markers_dir.mkdir(parents=True, exist_ok=True)
+        # Expose for compatibility
+        self.workflow_id = self._state.workflow_id
+        self.markers_dir = self._state.state_dir
+        self.base_dir = self._state.base_dir
 
-    def _generate_workflow_id(self) -> str:
-        """Generate a unique workflow ID."""
-        return datetime.now().strftime("%Y%m%d-%H%M%S")
+    # --- State Management ---
 
-    # Marker paths
-    @property
-    def tdd_mode(self) -> Path:
-        return self.markers_dir / "tdd-mode"
-
-    @property
-    def tdd_phase(self) -> Path:
-        return self.markers_dir / "tdd-phase"
-
-    @property
-    def supervisor_active(self) -> Path:
-        return self.markers_dir / "tdd-supervisor-active"
-
-    @property
-    def requirements_summary(self) -> Path:
-        return self.markers_dir / "tdd-requirements-summary.md"
-
-    @property
-    def interfaces_list(self) -> Path:
-        return self.markers_dir / "tdd-interfaces-list.md"
-
-    @property
-    def tests_list(self) -> Path:
-        return self.markers_dir / "tdd-tests-list.md"
-
-    # Completion markers (still used for hook compatibility)
-    @property
-    def requirements_confirmed(self) -> Path:
-        return self.markers_dir / "tdd-requirements-confirmed"
-
-    @property
-    def interfaces_designed(self) -> Path:
-        return self.markers_dir / "tdd-interfaces-designed"
-
-    @property
-    def tests_approved(self) -> Path:
-        return self.markers_dir / "tdd-tests-approved"
-
-    @property
-    def tests_passing(self) -> Path:
-        return self.markers_dir / "tdd-tests-passing"
-
-    # State management
     def initialize(self) -> None:
-        """Initialize markers for a new TDD workflow."""
-        self.tdd_mode.touch()
-        self.supervisor_active.touch()
-        self.set_phase(1)
-
-    def get_phase(self) -> int:
-        """Get current TDD phase (1-4)."""
-        if not self.tdd_phase.exists():
-            return 1
-        try:
-            return int(self.tdd_phase.read_text().strip())
-        except (ValueError, OSError):
-            return 1
-
-    def set_phase(self, phase: int) -> None:
-        """Set the current TDD phase."""
-        self.tdd_phase.write_text(str(phase))
+        """Initialize state for a new TDD workflow."""
+        self._state.initialize()
 
     def is_active(self) -> bool:
         """Check if TDD supervisor mode is active."""
-        return self.tdd_mode.exists() and self.supervisor_active.exists()
+        return self._state.is_active() and self._state.is_supervisor_mode()
 
-    # Context storage
+    # --- Phase Management ---
+
+    def get_phase(self) -> int:
+        """Get current TDD phase (1-4)."""
+        return self._state.get_phase()
+
+    def set_phase(self, phase: int) -> None:
+        """Set the current TDD phase."""
+        self._state.set_phase(phase)
+
+    # --- Requirements Phase ---
+
+    def is_requirements_complete(self) -> bool:
+        """Check if requirements phase is complete."""
+        return self._state.is_requirements_complete()
+
+    def mark_requirements_complete(self) -> None:
+        """Mark requirements phase as complete."""
+        self._state.mark_requirements_complete()
+
     def save_requirements_summary(self, summary: str) -> None:
         """Save requirements summary for passing to later phases."""
-        self.requirements_summary.write_text(summary)
+        self._state.save_requirements_summary(summary)
 
     def get_requirements_summary(self) -> str:
         """Get saved requirements summary."""
-        if self.requirements_summary.exists():
-            return self.requirements_summary.read_text()
-        return ""
+        return self._state.get_requirements_summary()
+
+    # --- Interfaces Phase ---
+
+    def is_interfaces_complete(self) -> bool:
+        """Check if interfaces phase is complete."""
+        return self._state.is_interfaces_complete()
+
+    def mark_interfaces_complete(self) -> None:
+        """Mark interfaces phase as complete."""
+        self._state.mark_interfaces_complete()
 
     def save_interfaces_list(self, interfaces: str) -> None:
         """Save list of created interfaces."""
-        self.interfaces_list.write_text(interfaces)
+        self._state.save_interfaces_list(interfaces)
 
     def get_interfaces_list(self) -> str:
         """Get saved interfaces list."""
-        if self.interfaces_list.exists():
-            return self.interfaces_list.read_text()
-        return ""
+        return self._state.get_interfaces_list()
+
+    # --- Tests Phase ---
+
+    def is_tests_complete(self) -> bool:
+        """Check if tests phase is complete."""
+        return self._state.is_tests_complete()
+
+    def mark_tests_complete(self) -> None:
+        """Mark tests phase as complete."""
+        self._state.mark_tests_complete()
 
     def save_tests_list(self, tests: str) -> None:
         """Save list of created tests."""
-        self.tests_list.write_text(tests)
+        self._state.save_tests_list(tests)
 
     def get_tests_list(self) -> str:
         """Get saved tests list."""
-        if self.tests_list.exists():
-            return self.tests_list.read_text()
-        return ""
+        return self._state.get_tests_list()
 
-    # Cleanup
-    def cleanup(self) -> None:
-        """Remove all markers for this workflow."""
-        if self.markers_dir.exists():
-            shutil.rmtree(self.markers_dir, ignore_errors=True)
+    # --- Implementation Phase ---
+
+    def is_implementation_complete(self) -> bool:
+        """Check if implementation phase is complete."""
+        return self._state.is_implementation_complete()
+
+    def mark_implementation_complete(self) -> None:
+        """Mark implementation phase as complete."""
+        self._state.mark_implementation_complete()
+
+    # --- Cleanup ---
+
+    def cleanup(self, keep_documents: bool = False) -> None:
+        """
+        Clean up state for this workflow.
+
+        Args:
+            keep_documents: If True, keeps document files for reference.
+        """
+        self._state.cleanup(keep_documents=keep_documents)
+
+    # --- Utility ---
 
     def get_marker_dir(self) -> str:
-        """Get the marker directory path."""
-        return str(self.markers_dir)
+        """Get the state directory path."""
+        return self._state.get_state_dir()
 
     def get_env_vars(self) -> dict:
         """
         Get environment variables to pass to Claude sessions.
 
-        These allow hooks to find the correct marker directory.
+        These allow hooks to find the correct state directory.
         """
-        return {
-            "TDD_SUPERVISOR_WORKFLOW_ID": self.workflow_id,
-            "TDD_SUPERVISOR_MARKERS_DIR": str(self.markers_dir),
-            "TDD_SUPERVISOR_ACTIVE": "1",
-        }
+        return self._state.get_env_vars()
+
+    # --- Usage Tracking ---
+
+    def add_phase_usage(
+        self,
+        phase: int,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cost_usd: float = 0.0,
+        duration_ms: int = 0,
+        turns: int = 0
+    ) -> None:
+        """
+        Add usage data for a phase. Accumulates with existing data.
+
+        Args:
+            phase: Phase number (1-4)
+            input_tokens: Number of input tokens used
+            output_tokens: Number of output tokens used
+            cost_usd: Cost in USD
+            duration_ms: Duration in milliseconds
+            turns: Number of API turns
+        """
+        self._state.add_phase_usage(
+            phase=phase,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost_usd,
+            duration_ms=duration_ms,
+            turns=turns
+        )
+
+    def get_phase_usage(self, phase: int) -> dict:
+        """Get usage data for a specific phase."""
+        return self._state.get_phase_usage(phase)
+
+    def get_total_usage(self) -> dict:
+        """Get total usage across all phases."""
+        return self._state.get_total_usage()
+
+    def get_all_usage(self) -> dict:
+        """Get usage data for all phases plus total."""
+        return self._state.get_all_usage()
+
+    def get_total_tokens(self) -> int:
+        """Get total tokens (input + output) across all phases."""
+        total = self._state.get_total_usage()
+        return total["input_tokens"] + total["output_tokens"]
+
+    def get_total_cost(self) -> float:
+        """Get total cost in USD across all phases."""
+        return self._state.get_total_usage()["cost_usd"]
+
+    def get_total_duration_sec(self) -> float:
+        """Get total duration in seconds across all phases."""
+        return self._state.get_total_usage()["duration_ms"] / 1000.0
+
+    def get_usage_summary_text(self) -> str:
+        """Get formatted usage summary text."""
+        total = self._state.get_total_usage()
+        tokens = total["input_tokens"] + total["output_tokens"]
+        cost = total["cost_usd"]
+        return f"{tokens:,} tokens, ${cost:.4f}"
+
+    # --- Document Storage ---
+
+    def save_phase_document(self, phase: int, content: str) -> str:
+        """
+        Save phase output document (human-readable markdown).
+
+        Args:
+            phase: Phase number (1-4)
+            content: Markdown content to save
+
+        Returns:
+            Path to saved file as string, or empty string if failed
+        """
+        path = self._state.save_phase_document(phase, content)
+        return str(path) if path else ""
+
+    def get_phase_document(self, phase: int) -> str:
+        """Get phase output document content."""
+        return self._state.get_phase_document(phase)
+
+    def get_phase_document_path(self, phase: int) -> str:
+        """Get path to phase document."""
+        path = self._state.get_phase_document_path(phase)
+        return str(path) if path else ""
+
+    def save_phase_context(self, phase: int, content: str) -> str:
+        """
+        Save context/input sent to Claude for a phase.
+
+        Args:
+            phase: Phase number (1-4)
+            content: Context content that was sent to Claude
+
+        Returns:
+            Path to saved file as string, or empty string if failed
+        """
+        path = self._state.save_phase_context(phase, content)
+        return str(path) if path else ""
+
+    def get_phase_context(self, phase: int) -> str:
+        """Get context/input that was sent to Claude for a phase."""
+        return self._state.get_phase_context(phase)
+
+    def get_phase_context_path(self, phase: int) -> str:
+        """Get path to phase context file."""
+        path = self._state.get_phase_context_path(phase)
+        return str(path) if path else ""
+
+    def list_documents(self) -> dict:
+        """List all existing documents in the workflow directory."""
+        docs = self._state.list_documents()
+        return {k: str(v) for k, v in docs.items()}

@@ -2,122 +2,128 @@
 """
 TDD Workflow - Marker Management
 
-Handles session-scoped marker files for TDD phase tracking.
-Supports both standalone session mode and supervisor mode.
+Thin wrapper around TDDState for backward compatibility with hooks.
+Delegates all operations to TDDState.
 """
 
-import os
-import shutil
-from pathlib import Path
-from typing import Optional
+from tdd_state import TDDState
 
 
 class MarkerManager:
-    """Manages TDD marker files with session isolation."""
+    """
+    Manages TDD state with session isolation.
+
+    This is a thin wrapper around TDDState that provides
+    the interface expected by hooks.
+    """
 
     def __init__(self, session_id: str = "unknown"):
         """
         Initialize marker manager with session ID.
 
         In supervisor mode (TDD_SUPERVISOR_MARKERS_DIR set), uses the
-        supervisor's marker directory instead of session-based one.
+        supervisor's state directory instead of session-based one.
         """
-        self.base_dir = Path.home() / ".claude" / "tmp"
+        self._state = TDDState(session_id=session_id, mode="cli")
+
+        # Expose state directory for compatibility
+        self.markers_dir = self._state.state_dir
         self.session_id = session_id
 
-        # Check for supervisor mode - use supervisor's marker directory
-        supervisor_markers_dir = os.environ.get("TDD_SUPERVISOR_MARKERS_DIR")
-        if supervisor_markers_dir:
-            self.markers_dir = Path(supervisor_markers_dir)
-            self._supervisor_mode = True
-        else:
-            self.markers_dir = self.base_dir / f"tdd-{session_id}"
-            self._supervisor_mode = False
-
-        # Ensure directory exists
-        self.markers_dir.mkdir(parents=True, exist_ok=True)
+    # --- Mode Detection ---
 
     def is_supervisor_mode(self) -> bool:
         """Check if running under supervisor control."""
-        return self._supervisor_mode or os.environ.get("TDD_SUPERVISOR_ACTIVE") == "1"
+        return self._state.is_supervisor_mode()
 
-    @property
-    def tdd_mode(self) -> Path:
-        return self.markers_dir / "tdd-mode"
-
-    @property
-    def tdd_phase(self) -> Path:
-        return self.markers_dir / "tdd-phase"
-
-    @property
-    def requirements_confirmed(self) -> Path:
-        return self.markers_dir / "tdd-requirements-confirmed"
-
-    @property
-    def interfaces_designed(self) -> Path:
-        return self.markers_dir / "tdd-interfaces-designed"
-
-    @property
-    def tests_approved(self) -> Path:
-        return self.markers_dir / "tdd-tests-approved"
-
-    @property
-    def tests_passing(self) -> Path:
-        return self.markers_dir / "tdd-tests-passing"
+    # --- Active State ---
 
     def is_tdd_active(self) -> bool:
         """Check if TDD mode is active."""
-        return self.tdd_mode.exists()
+        return self._state.is_active()
+
+    # --- Phase Management ---
 
     def get_phase(self) -> int:
-        """Get current TDD phase (1-4), defaults to 1. Resets invalid values."""
-        if not self.tdd_phase.exists():
-            return 1
-        try:
-            phase = int(self.tdd_phase.read_text().strip())
-            if phase < 1 or phase > 4:
-                raise ValueError("Phase out of range")
-            return phase
-        except (ValueError, OSError):
-            # Reset invalid phase to 1
-            self.set_phase(1)
-            return 1
+        """Get current TDD phase (1-4), defaults to 1."""
+        return self._state.get_phase()
 
     def set_phase(self, phase: int) -> None:
         """Set the current TDD phase."""
-        self.tdd_phase.write_text(str(phase))
+        self._state.set_phase(phase)
 
-    def marker_exists(self, marker: Path) -> bool:
-        """Check if a specific marker exists."""
-        return marker.exists()
+    def phase_exists(self) -> bool:
+        """Check if phase has been set (state is active)."""
+        return self._state.phase_exists()
 
-    def create_marker(self, marker: Path) -> None:
-        """Create a marker file."""
-        marker.touch()
+    # --- Requirements Phase ---
 
-    def remove_marker(self, marker: Path) -> None:
-        """Remove a marker file if it exists."""
-        if marker.exists():
-            marker.unlink()
+    def is_requirements_complete(self) -> bool:
+        """Check if requirements phase is complete."""
+        return self._state.is_requirements_complete()
+
+    def mark_requirements_complete(self) -> None:
+        """Mark requirements phase as complete."""
+        self._state.mark_requirements_complete()
+
+    def mark_requirements_incomplete(self) -> None:
+        """Mark requirements phase as incomplete."""
+        self._state.mark_requirements_incomplete()
+
+    # --- Interfaces Phase ---
+
+    def is_interfaces_complete(self) -> bool:
+        """Check if interfaces phase is complete."""
+        return self._state.is_interfaces_complete()
+
+    def mark_interfaces_complete(self) -> None:
+        """Mark interfaces phase as complete."""
+        self._state.mark_interfaces_complete()
+
+    def mark_interfaces_incomplete(self) -> None:
+        """Mark interfaces phase as incomplete."""
+        self._state.mark_interfaces_incomplete()
+
+    # --- Tests Phase ---
+
+    def is_tests_complete(self) -> bool:
+        """Check if tests phase is complete."""
+        return self._state.is_tests_complete()
+
+    def mark_tests_complete(self) -> None:
+        """Mark tests phase as complete."""
+        self._state.mark_tests_complete()
+
+    def mark_tests_incomplete(self) -> None:
+        """Mark tests phase as incomplete."""
+        self._state.mark_tests_incomplete()
+
+    # --- Implementation Phase ---
+
+    def is_implementation_complete(self) -> bool:
+        """Check if implementation phase is complete."""
+        return self._state.is_implementation_complete()
+
+    def mark_implementation_complete(self) -> None:
+        """Mark implementation phase as complete."""
+        self._state.mark_implementation_complete()
+
+    def mark_implementation_incomplete(self) -> None:
+        """Mark implementation phase as incomplete."""
+        self._state.mark_implementation_incomplete()
+
+    # --- Cleanup ---
 
     def cleanup_session(self) -> None:
-        """Remove all markers for this session."""
-        if self.markers_dir.exists():
-            shutil.rmtree(self.markers_dir, ignore_errors=True)
+        """Remove all state for this session."""
+        self._state.cleanup()
 
-    def cleanup_all_markers(self) -> None:
-        """Remove workflow marker files (keeps tests_passing as success indicator)."""
-        markers = [
-            self.tdd_mode,
-            self.tdd_phase,
-            self.requirements_confirmed,
-            self.interfaces_designed,
-            self.tests_approved,
-            # Note: tests_passing kept - cleared on next TDD start instead
-        ]
-        for marker in markers:
-            self.remove_marker(marker)
+    def cleanup_workflow_state(self) -> None:
+        """Reset workflow state (keeps implementation complete as success indicator)."""
+        self._state.cleanup_workflow_state()
+
+    # --- Utility ---
 
     def get_marker_dir_display(self) -> str:
         """Get displayable marker directory path (with ~)."""
-        return f"~/.claude/tmp/tdd-{self.session_id}"
+        return self._state.get_marker_dir_display()

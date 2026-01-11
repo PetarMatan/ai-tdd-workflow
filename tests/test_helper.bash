@@ -115,30 +115,134 @@ set_mock_test_result() {
     echo "$output" > "$TEST_TMP/mock_test_output"
 }
 
-# Create TDD marker (session-scoped)
+# Create/update TDD state.json file
+# Usage: create_tdd_state 1 true false false false
+create_tdd_state() {
+    local phase="${1:-1}"
+    local req="${2:-false}"
+    local int="${3:-false}"
+    local test="${4:-false}"
+    local impl="${5:-false}"
+    local active="${6:-true}"
+
+    cat > "$TEST_MARKERS_DIR/state.json" <<EOF
+{
+  "version": 1,
+  "active": $active,
+  "supervisorActive": false,
+  "phase": $phase,
+  "mode": "cli",
+  "completedPhases": {
+    "requirements": $req,
+    "interfaces": $int,
+    "tests": $test,
+    "implementation": $impl
+  },
+  "summaries": {
+    "requirements": "",
+    "interfaces": "",
+    "tests": ""
+  },
+  "metadata": {
+    "startedAt": "2026-01-10T00:00:00",
+    "workflowId": "",
+    "sessionId": "test-session"
+  }
+}
+EOF
+}
+
+# Create TDD marker (backward compatible - creates state.json)
 # Usage: create_marker "tdd-mode"
 create_marker() {
     local marker="$1"
-    touch "$TEST_MARKERS_DIR/$marker"
+    case "$marker" in
+        "tdd-mode")
+            # Create state.json with active=true if not exists
+            if [[ ! -f "$TEST_MARKERS_DIR/state.json" ]]; then
+                create_tdd_state 1 false false false false true
+            else
+                # Update active to true
+                local tmp=$(mktemp)
+                jq '.active = true' "$TEST_MARKERS_DIR/state.json" > "$tmp" && mv "$tmp" "$TEST_MARKERS_DIR/state.json"
+            fi
+            ;;
+        "tdd-requirements-confirmed")
+            # Update state.json to mark requirements complete
+            local tmp=$(mktemp)
+            jq '.completedPhases.requirements = true' "$TEST_MARKERS_DIR/state.json" > "$tmp" && mv "$tmp" "$TEST_MARKERS_DIR/state.json"
+            ;;
+        "tdd-interfaces-designed")
+            local tmp=$(mktemp)
+            jq '.completedPhases.interfaces = true' "$TEST_MARKERS_DIR/state.json" > "$tmp" && mv "$tmp" "$TEST_MARKERS_DIR/state.json"
+            ;;
+        "tdd-tests-approved")
+            local tmp=$(mktemp)
+            jq '.completedPhases.tests = true' "$TEST_MARKERS_DIR/state.json" > "$tmp" && mv "$tmp" "$TEST_MARKERS_DIR/state.json"
+            ;;
+        "tdd-tests-passing")
+            local tmp=$(mktemp)
+            jq '.completedPhases.implementation = true' "$TEST_MARKERS_DIR/state.json" > "$tmp" && mv "$tmp" "$TEST_MARKERS_DIR/state.json"
+            ;;
+        *)
+            # Unknown marker, just touch a file for backward compat
+            touch "$TEST_MARKERS_DIR/$marker"
+            ;;
+    esac
 }
 
 # Set TDD phase (session-scoped)
 # Usage: set_phase 2
 set_phase() {
     local phase="$1"
-    echo "$phase" > "$TEST_MARKERS_DIR/tdd-phase"
+    if [[ ! -f "$TEST_MARKERS_DIR/state.json" ]]; then
+        create_tdd_state "$phase" false false false false true
+    else
+        local tmp=$(mktemp)
+        jq ".phase = $phase" "$TEST_MARKERS_DIR/state.json" > "$tmp" && mv "$tmp" "$TEST_MARKERS_DIR/state.json"
+    fi
 }
 
 # Check if marker exists (session-scoped)
 # Usage: marker_exists "tdd-requirements-confirmed"
 marker_exists() {
     local marker="$1"
-    [[ -f "$TEST_MARKERS_DIR/$marker" ]]
+    if [[ ! -f "$TEST_MARKERS_DIR/state.json" ]]; then
+        return 1
+    fi
+
+    case "$marker" in
+        "tdd-mode")
+            jq -e '.active == true' "$TEST_MARKERS_DIR/state.json" >/dev/null 2>&1
+            ;;
+        "tdd-requirements-confirmed")
+            jq -e '.completedPhases.requirements == true' "$TEST_MARKERS_DIR/state.json" >/dev/null 2>&1
+            ;;
+        "tdd-interfaces-designed")
+            jq -e '.completedPhases.interfaces == true' "$TEST_MARKERS_DIR/state.json" >/dev/null 2>&1
+            ;;
+        "tdd-tests-approved")
+            jq -e '.completedPhases.tests == true' "$TEST_MARKERS_DIR/state.json" >/dev/null 2>&1
+            ;;
+        "tdd-tests-passing")
+            jq -e '.completedPhases.implementation == true' "$TEST_MARKERS_DIR/state.json" >/dev/null 2>&1
+            ;;
+        "tdd-phase")
+            jq -e '.phase' "$TEST_MARKERS_DIR/state.json" >/dev/null 2>&1
+            ;;
+        *)
+            [[ -f "$TEST_MARKERS_DIR/$marker" ]]
+            ;;
+    esac
 }
 
 # Get current phase (session-scoped)
 get_phase() {
-    cat "$TEST_MARKERS_DIR/tdd-phase" 2>/dev/null || echo "0"
+    if [[ -f "$TEST_MARKERS_DIR/state.json" ]]; then
+        jq -r '.phase' "$TEST_MARKERS_DIR/state.json" 2>/dev/null || echo "0"
+    else
+        echo "0"
+    fi
 }
 
 # Generate hook input JSON

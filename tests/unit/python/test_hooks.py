@@ -86,6 +86,70 @@ def setup_mock_test(tmpdir: str, success: bool = True, output: str = None) -> No
     Path(tmpdir, "mock_test_output").write_text(output)
 
 
+def setup_tdd_state(
+    markers_dir: Path,
+    phase: int = 1,
+    active: bool = True,
+    requirements_complete: bool = False,
+    interfaces_complete: bool = False,
+    tests_complete: bool = False,
+    implementation_complete: bool = False
+) -> None:
+    """
+    Set up TDD state.json file for testing.
+
+    Args:
+        markers_dir: The markers directory path
+        phase: Current TDD phase (1-4)
+        active: Whether TDD mode is active
+        requirements_complete: Whether requirements phase is complete
+        interfaces_complete: Whether interfaces phase is complete
+        tests_complete: Whether tests phase is complete
+        implementation_complete: Whether implementation phase is complete
+    """
+    markers_dir.mkdir(parents=True, exist_ok=True)
+    state = {
+        "version": 1,
+        "active": active,
+        "supervisorActive": False,
+        "phase": phase,
+        "mode": "cli",
+        "completedPhases": {
+            "requirements": requirements_complete,
+            "interfaces": interfaces_complete,
+            "tests": tests_complete,
+            "implementation": implementation_complete
+        },
+        "summaries": {
+            "requirements": "",
+            "interfaces": "",
+            "tests": ""
+        },
+        "metadata": {
+            "startedAt": "2026-01-10T00:00:00",
+            "workflowId": "",
+            "sessionId": "test-session"
+        }
+    }
+    (markers_dir / "state.json").write_text(json.dumps(state, indent=2))
+
+
+def get_tdd_state(markers_dir: Path) -> dict:
+    """Read TDD state from state.json file."""
+    state_file = markers_dir / "state.json"
+    if not state_file.exists():
+        return None
+    return json.loads(state_file.read_text())
+
+
+def get_tdd_phase(markers_dir: Path) -> int:
+    """Get current TDD phase from state.json."""
+    state = get_tdd_state(markers_dir)
+    if state is None:
+        return None
+    return state.get("phase", 1)
+
+
 def generate_hook_input(
     tool_name: str = "Write",
     file_path: str = "/project/src/main.py",
@@ -123,8 +187,7 @@ class TestCleanupMarkersHook:
             # Create marker directory with markers
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("2")
+            setup_tdd_state(markers_dir, phase=2)
 
             # Mock home directory
             env = {"HOME": tmpdir}
@@ -139,27 +202,24 @@ class TestCleanupMarkersHook:
             # Markers should be cleaned up
             assert not markers_dir.exists()
 
-    def test_cleans_up_all_tdd_markers(self):
-        """Should clean up all TDD markers on SessionEnd."""
+    def test_cleans_up_all_tdd_state(self):
+        """Should clean up all TDD state on SessionEnd."""
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
 
-            # Create all markers
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("3")
-            (markers_dir / "tdd-requirements-confirmed").touch()
-            (markers_dir / "tdd-interfaces-designed").touch()
-            (markers_dir / "tdd-tests-approved").touch()
-            (markers_dir / "tdd-tests-passing").touch()
+            # Create state with all phases complete
+            setup_tdd_state(
+                markers_dir,
+                phase=4,
+                requirements_complete=True,
+                interfaces_complete=True,
+                tests_complete=True,
+                implementation_complete=True
+            )
 
-            # Verify they exist
-            assert (markers_dir / "tdd-mode").exists()
-            assert (markers_dir / "tdd-phase").exists()
-            assert (markers_dir / "tdd-requirements-confirmed").exists()
-            assert (markers_dir / "tdd-interfaces-designed").exists()
-            assert (markers_dir / "tdd-tests-approved").exists()
-            assert (markers_dir / "tdd-tests-passing").exists()
+            # Verify state exists
+            assert (markers_dir / "state.json").exists()
 
             env = {"HOME": tmpdir}
             input_data = generate_hook_input(
@@ -170,7 +230,7 @@ class TestCleanupMarkersHook:
             exit_code, stdout, stderr = run_hook("tdd-cleanup-markers", input_data, env)
 
             assert exit_code == 0
-            # All markers should be gone
+            # Directory should be gone
             assert not markers_dir.exists()
 
     def test_handles_missing_markers_gracefully(self):
@@ -187,16 +247,14 @@ class TestCleanupMarkersHook:
 
             assert exit_code == 0
 
-    def test_handles_partial_markers(self):
-        """Should handle partial markers."""
+    def test_handles_partial_state(self):
+        """Should handle partial state (only some phases complete)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
 
-            # Create only some markers
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-requirements-confirmed").touch()
-            # Don't create tdd-phase and others
+            # Create state with only requirements complete
+            setup_tdd_state(markers_dir, phase=1, requirements_complete=True)
 
             env = {"HOME": tmpdir}
             input_data = generate_hook_input(
@@ -249,8 +307,7 @@ class TestPhaseGuardHook:
             # Create TDD mode marker
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("1")
+            setup_tdd_state(markers_dir, phase=1)
 
             env = {"HOME": tmpdir, "TDD_INSTALL_DIR": str(PROJECT_ROOT)}
             input_data = generate_hook_input(tool_name="Read")
@@ -265,8 +322,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("1")
+            setup_tdd_state(markers_dir, phase=1)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -292,8 +348,7 @@ class TestPhaseGuardHook:
             # Create TDD mode marker in phase 1
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("1")
+            setup_tdd_state(markers_dir, phase=1)
 
             # Create a mock project with pom.xml for profile detection
             project_dir = Path(tmpdir) / "project"
@@ -319,8 +374,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("1")
+            setup_tdd_state(markers_dir, phase=1)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -344,8 +398,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("1")
+            setup_tdd_state(markers_dir, phase=1)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -370,8 +423,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("2")
+            setup_tdd_state(markers_dir, phase=2)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -393,8 +445,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("2")
+            setup_tdd_state(markers_dir, phase=2)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -419,8 +470,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("2")
+            setup_tdd_state(markers_dir, phase=2)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -445,8 +495,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("3")
+            setup_tdd_state(markers_dir, phase=3)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -471,8 +520,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("3")
+            setup_tdd_state(markers_dir, phase=3)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -494,8 +542,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("3")
+            setup_tdd_state(markers_dir, phase=3)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -520,8 +567,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("4")
+            setup_tdd_state(markers_dir, phase=4)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -543,8 +589,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("4")
+            setup_tdd_state(markers_dir, phase=4)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -566,8 +611,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("4")
+            setup_tdd_state(markers_dir, phase=4)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -592,8 +636,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("2")
+            setup_tdd_state(markers_dir, phase=2)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -618,8 +661,7 @@ class TestPhaseGuardHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("3")
+            setup_tdd_state(markers_dir, phase=3)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -736,8 +778,7 @@ class TestAutoCompileHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("4")
+            setup_tdd_state(markers_dir, phase=4)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -759,8 +800,7 @@ class TestAutoCompileHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("2")
+            setup_tdd_state(markers_dir, phase=2)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -879,8 +919,7 @@ class TestAutoTestHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("2")
+            setup_tdd_state(markers_dir, phase=2)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -901,8 +940,7 @@ class TestAutoTestHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("4")
+            setup_tdd_state(markers_dir, phase=4)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -924,8 +962,7 @@ class TestAutoTestHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("4")
+            setup_tdd_state(markers_dir, phase=4)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -946,8 +983,7 @@ class TestAutoTestHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("4")
+            setup_tdd_state(markers_dir, phase=4)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -977,8 +1013,7 @@ class TestAutoTestHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("4")
+            setup_tdd_state(markers_dir, phase=4)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -1008,8 +1043,7 @@ class TestAutoTestHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("4")
+            setup_tdd_state(markers_dir, phase=4)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -1038,8 +1072,7 @@ class TestAutoTestHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("4")
+            setup_tdd_state(markers_dir, phase=4)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -1066,8 +1099,7 @@ class TestAutoTestHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("4")
+            setup_tdd_state(markers_dir, phase=4)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -1099,8 +1131,7 @@ class TestAutoTestHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("4")
+            setup_tdd_state(markers_dir, phase=4)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -1149,8 +1180,7 @@ class TestOrchestratorHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("1")
+            setup_tdd_state(markers_dir, phase=1)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -1171,8 +1201,7 @@ class TestOrchestratorHook:
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("1")
+            setup_tdd_state(markers_dir, phase=1)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -1192,13 +1221,11 @@ class TestOrchestratorHook:
                 assert "Phase 1" in response.get("reason", "")
 
     def test_phase_1_advances_to_phase_2_with_marker(self):
-        """Should advance from phase 1 to phase 2 when requirements marker exists."""
+        """Should advance from phase 1 to phase 2 when requirements are complete."""
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("1")
-            (markers_dir / "tdd-requirements-confirmed").touch()
+            setup_tdd_state(markers_dir, phase=1, requirements_complete=True)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -1213,14 +1240,14 @@ class TestOrchestratorHook:
             exit_code, stdout, stderr = run_hook("tdd-orchestrator", input_data, env)
             assert exit_code == 0
             # Should now be in phase 2
-            assert (markers_dir / "tdd-phase").read_text() == "2"
+            assert get_tdd_phase(markers_dir) == 2
 
     def test_initializes_phase_to_1_if_missing(self):
         """Should initialize phase to 1 if phase file is missing."""
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
+            setup_tdd_state(markers_dir, phase=1)
             # Don't create phase file
 
             project_dir = Path(tmpdir) / "project"
@@ -1236,15 +1263,14 @@ class TestOrchestratorHook:
             exit_code, stdout, stderr = run_hook("tdd-orchestrator", input_data, env)
             assert exit_code == 0
             # Phase file should be created
-            assert (markers_dir / "tdd-phase").exists()
+            assert (markers_dir / "state.json").exists()
 
     def test_handles_no_agents_gracefully(self):
         """Should handle no agents gracefully."""
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("1")
+            setup_tdd_state(markers_dir, phase=1)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -1267,13 +1293,12 @@ class TestOrchestratorHook:
                 response = json.loads(stdout)
                 assert response.get("decision") == "block"
 
-    def test_resets_unknown_phase_to_1(self):
-        """Should reset unknown phase to 1."""
+    def test_treats_unknown_phase_as_phase_1(self):
+        """Should treat unknown phase as phase 1 (blocks until requirements complete)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("99")  # Unknown phase
+            setup_tdd_state(markers_dir, phase=99)  # Unknown phase
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -1288,16 +1313,18 @@ class TestOrchestratorHook:
             exit_code, stdout, stderr = run_hook("tdd-orchestrator", input_data, env)
 
             assert exit_code == 0
-            # Phase should be reset to 1
-            assert (markers_dir / "tdd-phase").read_text() == "1"
+            # Should block as if in phase 1
+            if stdout:
+                response = json.loads(stdout)
+                assert response.get("decision") == "block"
+                assert "Phase 1" in response.get("reason", "")
 
     def test_phase_1_loads_agents_configured_for_phase_1(self):
         """Should load agents configured for phase 1."""
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("1")
+            setup_tdd_state(markers_dir, phase=1)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
@@ -1336,8 +1363,7 @@ This agent helps with requirements gathering.
         with tempfile.TemporaryDirectory() as tmpdir:
             markers_dir = Path(tmpdir) / ".claude" / "tmp" / "tdd-test-session"
             markers_dir.mkdir(parents=True)
-            (markers_dir / "tdd-mode").touch()
-            (markers_dir / "tdd-phase").write_text("1")
+            setup_tdd_state(markers_dir, phase=1)
 
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
